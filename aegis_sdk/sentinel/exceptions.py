@@ -1,34 +1,29 @@
-"""Custom exceptions for the sentinel-guardrails library."""
+"""Custom exceptions for sentinel-guardrails."""
 
 
 class SentinelBlockedError(Exception):
-    """Raised when a monitored function call is blocked by policy."""
+    """Raised when an action is blocked by policy."""
 
-    def __init__(self, action: str, message: str = ""):
-        self.action = action
-        self.message = message or f"Action '{action}' is blocked by Sentinel policy."
-        super().__init__(self.message)
+    def __init__(self, action_name: str):
+        self.action_name = action_name
+        super().__init__(
+            f"Action '{action_name}' is blocked by Sentinel policy."
+        )
 
 
 class SentinelKillSwitchError(Exception):
-    """Raised when an agent has been remotely PAUSED via the kill switch."""
+    """Raised when the agent is PAUSED (kill switch active)."""
 
-    def __init__(self, agent_name: str, message: str = ""):
+    def __init__(self, agent_name: str):
         self.agent_name = agent_name
-        self.message = message or (
+        super().__init__(
             f"Agent '{agent_name}' is PAUSED. All operations are suspended. "
-            "Use 'sentinel revive' to reactivate."
+            f"Use 'sentinel revive' to reactivate."
         )
-        super().__init__(self.message)
 
 
 class SentinelApprovalError(Exception):
-    """Raised when an action requires human approval before proceeding."""
+    """Raised when a REVIEW action times out waiting for human approval."""
 
-    def __init__(self, action: str, approver: str = "", message: str = ""):
-        self.action = action
-        self.approver = approver
-        self.message = message or (
-            f"Action '{action}' requires approval from '{approver}'."
-        )
-        super().__init__(self.message)
+    def __init__(self, message: str = "Approval timed out."):
+        super().__init__(message)

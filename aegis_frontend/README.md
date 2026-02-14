@@ -1,32 +1,16 @@
-# Aegis Frontend
+# React + Vite
 
-React dashboard that provides real-time visibility and control over all registered AI agents.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Responsibilities
+Currently, two official plugins are available:
 
-- **Agent Overview** — Display all registered agents with their Digital IDs, status, and risk badges
-- **Decorator Panel** — View and edit each agent's policy (allowed/blocked actions, data, servers)
-- **Live Activity Feed** — Stream agent events in real time via WebSocket connection
-- **Dependency Graph** — Interactive visualization of agent-to-agent relationships and data flows
-- **Governance Flags** — Surface policy violations with severity levels and suggested remediations
-- **Review Queue** — Human-in-the-loop interface to approve or reject unknown agent actions
-- **Analytics Dashboard** — Timeline charts, violation breakdowns, and aggregate stats
-- **Export Controls** — One-click export of manifests (YAML) and fact sheets (Markdown/PDF)
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
 
-## Tech Stack
+## React Compiler
 
-- **Framework:** React (Vite)
-- **Styling:** TBD (Tailwind CSS / shadcn recommended)
-- **State:** React hooks + context
-- **Real-time:** WebSocket client
-- **Graphing:** TBD (D3.js / React Flow for dependency graph, Recharts for analytics)
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-## Getting Started
+## Expanding the ESLint configuration
 
-```bash
-cd aegis_frontend
-npm install
-npm run dev
-```
-
-Dashboard will be available at `http://localhost:5173`.
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
