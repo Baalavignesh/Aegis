@@ -8,11 +8,13 @@ from sentinel.exceptions import (
     SentinelApprovalError,
 )
 from sentinel.decorators import agent, monitor
+from sentinel.core import wait_for_approval
 from sentinel.cli import kill_agent, revive_agent, show_audit_log
 
 __all__ = [
     "agent",
     "monitor",
+    "wait_for_approval",
     "kill_agent",
     "revive_agent",
     "show_audit_log",

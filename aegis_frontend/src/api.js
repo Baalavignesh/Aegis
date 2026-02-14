@@ -18,6 +18,12 @@ export async function fetchAgentLogs(name) {
     return res.json();
 }
 
+export async function fetchAllLogs() {
+    const res = await fetch(`${API_BASE}/logs`);
+    if (!res.ok) throw new Error('Failed to fetch global logs');
+    return res.json();
+}
+
 export async function fetchAgentPolicies(name) {
     const res = await fetch(`${API_BASE}/agents/${encodeURIComponent(name)}/policies`);
     if (!res.ok) throw new Error('Failed to fetch policies');

@@ -3,6 +3,7 @@ import {
   fetchStats,
   fetchAgents,
   fetchAgentLogs,
+  fetchAllLogs,
   fetchAgentPolicies,
   fetchPendingApprovals,
   toggleAgent,
@@ -49,14 +50,14 @@ export default function App() {
 
   // ── Fetch logs for selected agent (2s polling) ──────────────────
   useEffect(() => {
-    if (!selectedAgent) {
-      setLogs([]);
-      return;
-    }
-
     const fetchLogs = async () => {
       try {
-        const data = await fetchAgentLogs(selectedAgent);
+        let data;
+        if (selectedAgent) {
+          data = await fetchAgentLogs(selectedAgent);
+        } else {
+          data = await fetchAllLogs();
+        }
         setLogs(data);
       } catch { /* ignore */ }
     };
@@ -65,6 +66,7 @@ export default function App() {
     const interval = setInterval(fetchLogs, 2000);
     return () => clearInterval(interval);
   }, [selectedAgent]);
+
 
   // ── Fetch policies for selected agent ───────────────────────────
   useEffect(() => {

@@ -12,8 +12,10 @@ DB_PATH = "sentinel.db"
 
 
 @contextmanager
-def _connect(db_path: str = DB_PATH) -> Generator[sqlite3.Connection, None, None]:
+def _connect(db_path: Optional[str] = None) -> Generator[sqlite3.Connection, None, None]:
     """Yield a short-lived SQLite connection with dict-like row access."""
+    if db_path is None:
+        db_path = DB_PATH
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
@@ -28,7 +30,7 @@ def _connect(db_path: str = DB_PATH) -> Generator[sqlite3.Connection, None, None
 
 # ── Schema ──────────────────────────────────────────────────────────────────
 
-def init_db(db_path: str = DB_PATH) -> None:
+def init_db(db_path: Optional[str] = None) -> None:
     """Create the core tables if they don't already exist."""
     with _connect(db_path) as conn:
         conn.executescript("""
@@ -72,7 +74,7 @@ def init_db(db_path: str = DB_PATH) -> None:
 
 # ── Queries (called on every function invocation — the "poll") ──────────
 
-def get_agent_status(name: str, db_path: str = DB_PATH) -> Optional[str]:
+def get_agent_status(name: str, db_path: Optional[str] = None) -> Optional[str]:
     """Return ``'ACTIVE'``, ``'PAUSED'``, or ``None`` if not found."""
     with _connect(db_path) as conn:
         row = conn.execute(
@@ -81,7 +83,7 @@ def get_agent_status(name: str, db_path: str = DB_PATH) -> Optional[str]:
     return row["status"] if row else None
 
 
-def get_policy(agent_name: str, action: str, db_path: str = DB_PATH) -> Optional[str]:
+def get_policy(agent_name: str, action: str, db_path: Optional[str] = None) -> Optional[str]:
     """Return ``'ALLOW'``, ``'BLOCK'``, ``'REVIEW'``, or ``None``."""
     with _connect(db_path) as conn:
         row = conn.execute(
@@ -91,7 +93,7 @@ def get_policy(agent_name: str, action: str, db_path: str = DB_PATH) -> Optional
     return row["rule_type"] if row else None
 
 
-def get_all_policies(agent_name: str, db_path: str = DB_PATH) -> list:
+def get_all_policies(agent_name: str, db_path: Optional[str] = None) -> list:
     """Return all policy rows for an agent."""
     with _connect(db_path) as conn:
         rows = conn.execute(
@@ -108,7 +110,7 @@ def log_event(
     action: str,
     status: str,
     details: str = "",
-    db_path: str = DB_PATH,
+    db_path: Optional[str] = None,
 ) -> None:
     """Append one row to the ``audit_log`` table."""
     with _connect(db_path) as conn:
@@ -119,7 +121,7 @@ def log_event(
         )
 
 
-def update_status(name: str, status: str, db_path: str = DB_PATH) -> None:
+def update_status(name: str, status: str, db_path: Optional[str] = None) -> None:
     """Set an agent's status to ``'ACTIVE'`` or ``'PAUSED'``."""
     with _connect(db_path) as conn:
         conn.execute(
@@ -127,7 +129,7 @@ def update_status(name: str, status: str, db_path: str = DB_PATH) -> None:
         )
 
 
-def upsert_agent(name: str, owner: str = "", db_path: str = DB_PATH) -> None:
+def upsert_agent(name: str, owner: str = "", db_path: Optional[str] = None) -> None:
     """Insert the agent or update the owner if it already exists."""
     with _connect(db_path) as conn:
         conn.execute(
@@ -138,7 +140,7 @@ def upsert_agent(name: str, owner: str = "", db_path: str = DB_PATH) -> None:
 
 
 def upsert_policy(
-    agent_name: str, action: str, rule_type: str, db_path: str = DB_PATH
+    agent_name: str, action: str, rule_type: str, db_path: Optional[str] = None
 ) -> None:
     """Insert or replace a single policy row."""
     with _connect(db_path) as conn:
@@ -152,7 +154,7 @@ def upsert_policy(
 # ── Approval helpers ────────────────────────────────────────────────────────
 
 def create_approval(
-    agent_name: str, action: str, args_json: str = "{}", db_path: str = DB_PATH
+    agent_name: str, action: str, args_json: str = "{}", db_path: Optional[str] = None
 ) -> int:
     """Create a PENDING approval row. Returns the approval ID."""
     with _connect(db_path) as conn:
@@ -164,7 +166,7 @@ def create_approval(
         return cursor.lastrowid
 
 
-def get_approval_status(approval_id: int, db_path: str = DB_PATH) -> Optional[str]:
+def get_approval_status(approval_id: int, db_path: Optional[str] = None) -> Optional[str]:
     """Return the status of an approval: 'PENDING', 'APPROVED', or 'DENIED'."""
     with _connect(db_path) as conn:
         row = conn.execute(
@@ -174,7 +176,7 @@ def get_approval_status(approval_id: int, db_path: str = DB_PATH) -> Optional[st
 
 
 def decide_approval(
-    approval_id: int, decision: str, db_path: str = DB_PATH
+    approval_id: int, decision: str, db_path: Optional[str] = None
 ) -> None:
     """Set approval to 'APPROVED' or 'DENIED'."""
     with _connect(db_path) as conn:
@@ -185,7 +187,7 @@ def decide_approval(
         )
 
 
-def get_pending_approvals(db_path: str = DB_PATH) -> list:
+def get_pending_approvals(db_path: Optional[str] = None) -> list:
     """Return all PENDING approval rows."""
     with _connect(db_path) as conn:
         rows = conn.execute(
@@ -198,12 +200,15 @@ def get_pending_approvals(db_path: str = DB_PATH) -> list:
 
 # ── Read helpers (for CLI / manifest) ───────────────────────────────────────
 
-def get_audit_log(agent_name: str, limit: int = 10, db_path: str = DB_PATH) -> list:
-    """Return the last *limit* audit-log rows for *agent_name*."""
+def get_audit_log(agent_name: Optional[str] = None, limit: int = 10, db_path: Optional[str] = None) -> list:
+    """Return the last *limit* audit-log rows. If agent_name is None, returns logs for all agents."""
     with _connect(db_path) as conn:
-        rows = conn.execute(
-            "SELECT id, timestamp, agent_name, action, status, details "
-            "FROM audit_log WHERE agent_name = ? ORDER BY id DESC LIMIT ?",
-            (agent_name, limit),
-        ).fetchall()
+        if agent_name:
+            query = "SELECT id, timestamp, agent_name, action, status, details FROM audit_log WHERE agent_name = ? ORDER BY id DESC LIMIT ?"
+            params = (agent_name, limit)
+        else:
+            query = "SELECT id, timestamp, agent_name, action, status, details FROM audit_log ORDER BY id DESC LIMIT ?"
+            params = (limit,)
+
+        rows = conn.execute(query, params).fetchall()
     return [dict(r) for r in reversed(rows)]

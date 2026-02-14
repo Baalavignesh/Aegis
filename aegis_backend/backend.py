@@ -9,6 +9,7 @@ Run with:
 """
 
 import hashlib
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -34,7 +35,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_PATH = "sentinel.db"
+# Default: resolve to the demo's sentinel.db relative to this file's location.
+# Override with SENTINEL_DB_PATH env var if needed.
+DB_PATH = os.environ.get(
+    "SENTINEL_DB_PATH",
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "aegis_demo", "data", "sentinel.db",
+    ),
+)
 
 
 # ── Database Helper ─────────────────────────────────────────────────────────
@@ -217,12 +226,46 @@ def get_agent_logs(name: str):
         ).fetchone()
         if not agent:
             raise HTTPException(status_code=404, detail=f"Agent '{name}' not found.")
-
+        
+        # Use existing query logic
         rows = conn.execute(
             "SELECT id, timestamp, agent_name, action, status, details "
             "FROM audit_log WHERE agent_name = ? "
             "ORDER BY id DESC LIMIT 50",
             (name,),
+        ).fetchall()
+
+    return [
+        LogEntry(
+            id=row["id"],
+            timestamp=row["timestamp"],
+            agent_name=row["agent_name"],
+            action=row["action"],
+            status=row["status"],
+            severity=severity_map.get(row["status"], "info"),
+            details=row["details"] or "",
+        )
+        for row in rows
+    ]
+
+
+@app.get("/logs", response_model=list[LogEntry])
+def get_global_logs():
+    """Return the last 50 audit log entries across ALL agents."""
+    severity_map = {
+        "ALLOWED": "success",
+        "BLOCKED": "failure",
+        "KILLED": "critical",
+        "PENDING": "warning",
+        "APPROVED": "success",
+        "DENIED": "failure",
+        "TIMEOUT": "failure",
+    }
+
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT id, timestamp, agent_name, action, status, details "
+            "FROM audit_log ORDER BY id DESC LIMIT 50"
         ).fetchall()
 
     return [
