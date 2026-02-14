@@ -5,7 +5,7 @@ Attempts to access sensitive data for "personalization" and uses an undeclared a
 
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.prebuilt import create_react_agent
+from langgraph.prebuilt import create_agent
 
 from ..core import AegisAgent
 from ..core import (
@@ -52,7 +52,7 @@ def run():
 
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
     llm = ChatGoogleGenerativeAI(model=model)
-    agent_executor = create_react_agent(llm, monitored_tools)
+    agent_executor = create_agent(llm, monitored_tools)
 
     agent.log_thought("Starting marketing campaign: Spring Savings Promo")
 

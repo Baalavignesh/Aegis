@@ -249,7 +249,7 @@ monitored_tools = agent.wrap_langchain_tools(raw_tools)
 
 # 4. Create LangChain agent — tools are now governed
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite")
-agent_executor = create_react_agent(llm, monitored_tools)
+agent_executor = create_agent(llm, monitored_tools)
 agent_executor.invoke({"messages": [("user", prompt)]})
 ```
 
@@ -276,7 +276,7 @@ Blocked/review decisions raise a `ToolException` that flows back to the LLM as a
 - Tools use LangChain's `@tool` decorator creating `StructuredTool` objects with proper typed argument schemas
 - `wrap_langchain_tools()` uses `copy.copy(tool)` to preserve `StructuredTool` schemas when wrapping
 - `handle_tool_error=True` on wrapped tools ensures `ToolException` flows back to the LLM as a message
-- Agents use `create_react_agent` from LangGraph for ReAct-style reasoning
+- Agents use `create_agent` from LangGraph for ReAct-style reasoning
 - The orchestrator adds a 20-second pause between agents for API rate limiting
 - `sentinel.db` is deleted at the start of each run for reproducibility
 
@@ -308,7 +308,7 @@ Created by the SDK at runtime. Contains:
 
 | Component | Technology |
 |-----------|-----------|
-| Agent Framework | LangChain + LangGraph (`create_react_agent`) |
+| Agent Framework | LangChain + LangGraph (`create_agent`) |
 | LLM | Google Gemini (`gemini-2.5-flash-lite` default) |
 | Tools | LangChain `@tool` decorator (`StructuredTool`) |
 | Bank Data | SQLite (`data/demo_bank.db`) |
