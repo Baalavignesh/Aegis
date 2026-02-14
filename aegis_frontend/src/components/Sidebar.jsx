@@ -1,4 +1,4 @@
-import { Bot, ShieldCheck, ShieldOff } from 'lucide-react';
+import { Bot, ShieldCheck, ShieldOff, LayoutGrid } from 'lucide-react';
 
 export default function Sidebar({ agents, selected, onSelect }) {
     return (
@@ -21,6 +21,25 @@ export default function Sidebar({ agents, selected, onSelect }) {
             {/* Agent list */}
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
                 <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-text-dim">
+                    Global view
+                </p>
+                <button
+                    onClick={() => onSelect(null)}
+                    className={`w-full text-left rounded-lg px-3 py-3 transition-all duration-200 border transform
+            ${!selected
+                            ? 'bg-neon-blue/10 border-neon-blue/25 text-neon-blue shadow-[0_0_15px_rgba(0,176,255,0.1)]'
+                            : 'bg-transparent border-transparent text-text-muted hover:bg-bg-card-hover hover:text-text-primary'
+                        }`}
+                >
+                    <div className="flex items-center gap-3">
+                        <div className={`p-1.5 rounded-md ${!selected ? 'bg-neon-blue/15' : 'bg-bg-card'}`}>
+                            <LayoutGrid className={`w-4 h-4 ${!selected ? 'text-neon-blue' : 'text-text-dim'}`} />
+                        </div>
+                        <span className="text-sm font-semibold">All Connected Agents</span>
+                    </div>
+                </button>
+
+                <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-text-dim mt-4">
                     Registered Agents
                 </p>
 

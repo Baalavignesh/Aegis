@@ -6,13 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Aegis (Agent Sentinel) is an AI agent governance platform — a firewall and observability layer for autonomous AI agents. It intercepts agent actions, validates them against declared policies (decorators), and provides real-time monitoring, audit trails, and human-in-the-loop controls.
 
-**Current state:** The SDK (`sentinel-guardrails`) and demo are fully implemented. The backend and frontend are documentation scaffolds awaiting implementation.
+**Current state:** The SDK, demo, AND backend are fully implemented and synced. The frontend is a documentation scaffold.
 
 ## Architecture
 
 Three-tier system with four directories:
 
-- **aegis_backend/** — FastAPI server (port 8000): agent registry, firewall/policy engine, governance rules, WebSocket events, review queue, analytics/exports. Uses SQLModel + SQLite (MVP). API docs at `/docs`. *(Not yet implemented — README spec only.)*
+- **aegis_backend/** — FastAPI server (port 8000): agent registry, firewall/policy engine, governance rules, review queue, analytics. Implemented with SQLModel + SQLite. API docs at `/docs`.
 - **aegis_frontend/** — React SPA via Vite (port 5173): agent dashboard, live activity feed, dependency graph visualization, governance flags, review queue UI, export controls. *(Not yet implemented — README spec only.)*
 - **aegis_sdk/** — `sentinel-guardrails` Python library: `@agent` and `@monitor` decorators, `agent_context` for dynamic agent resolution, SQLite-backed policy enforcement, kill-switch (`PAUSED`/`ACTIVE`), audit logging, CLI helpers. No network dependency — all local via SQLite.
 - **aegis_demo/** — Four LangChain + Gemini agents (Customer Support, Fraud Detection, Loan Processing, Marketing) demonstrating Aegis firewall governance over a personal finance scenario with a seeded SQLite bank database. Integrates with the real SDK via an adapter in `core/mock_aegis.py`.
@@ -39,10 +39,10 @@ pip install -r requirements.txt
 python -m aegis_demo                     # run all 4 agents
 python -m aegis_demo --agent fraud_detection  # run one agent
 
-# Backend (not yet implemented)
+# Backend (implemented)
 cd aegis_backend
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+uvicorn backend:app --reload --port 8000
 
 # Frontend (not yet implemented)
 cd aegis_frontend

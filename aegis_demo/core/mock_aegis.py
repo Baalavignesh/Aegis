@@ -11,9 +11,9 @@ from datetime import datetime
 from functools import wraps
 from langchain_core.tools.base import ToolException
 
-from sentinel.core import register_agent, validate_action
+from sentinel.core import register_agent, validate_action, wait_for_approval
 from sentinel import db as sentinel_db
-from sentinel.exceptions import SentinelBlockedError, SentinelKillSwitchError
+from sentinel.exceptions import SentinelBlockedError, SentinelKillSwitchError, SentinelApprovalError
 
 
 # --- ANSI Colors ---
@@ -65,6 +65,7 @@ class AegisAgent:
             owner=role,
             allows=decorator.get("allowed_actions", []),
             blocks=decorator.get("blocked_actions", []),
+            requires_review=decorator.get("requires_review_actions", []),
         )
 
         self._print_registration()
@@ -99,9 +100,17 @@ class AegisAgent:
         except SentinelBlockedError:
             return "BLOCKED"
 
-        # Step 4: unknown action -> REVIEW
+        # Step 4: unknown action -> REVIEW (ask for approval)
         if not result:
-            return "REVIEW"
+            print(f"  {C.YELLOW}{C.BOLD}[AEGIS]{C.RESET} Action '{action}' requires approval. Waiting for human decision... (120s timeout)")
+            try:
+                # args_str contains the arguments for context
+                approved = wait_for_approval(self.name, action, args_str)
+                if approved:
+                     # If approved, we return ALLOWED so execution continues
+                     return "ALLOWED"
+            except (SentinelBlockedError, SentinelApprovalError):
+                return "BLOCKED"
 
         # Step 5: check blocked_data keywords in args
         blocked_data = self.decorator.get("blocked_data", [])

@@ -74,13 +74,13 @@ def validate_action(
         return True
 
     if rule == "REVIEW":
-        return _wait_for_approval(agent_name, action_name, args_json)
+        return wait_for_approval(agent_name, action_name, args_json)
 
     # Default: unknown action
     return False
 
 
-def _wait_for_approval(
+def wait_for_approval(
     agent_name: str, action_name: str, args_json: str
 ) -> bool:
     """Create a pending approval and poll until the human decides.

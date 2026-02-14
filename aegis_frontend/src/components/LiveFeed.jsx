@@ -68,6 +68,11 @@ export default function LiveFeed({ logs, agentName }) {
                                     <span className={`font-mono text-sm font-semibold ${config.color} ${config.glow}`}>
                                         {entry.action}
                                     </span>
+                                    {!agentName && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-bg-card hover:bg-bg-card-hover border border-border text-text-dim">
+                                            {entry.agent_name}
+                                        </span>
+                                    )}
                                     <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold
                     ${entry.status === 'ALLOWED' || entry.status === 'APPROVED'
                                             ? 'bg-neon-green/10 text-neon-green'
