@@ -125,7 +125,7 @@ agent-sentinel/
 │   └── requirements.txt
 │
 ├── sdk/                        # Python SDK (what developers integrate)
-│   ├── sentinel.py             # SentinelAgent class + @monitor decorator
+│   ├── sentinel.py             # AegisAgent class + @monitor decorator
 │   ├── firewall.py             # Client-side policy checks
 │   ├── manifest.py             # AgentBOM manifest generator
 │   ├── adapters/
@@ -226,10 +226,10 @@ Navigate to `http://localhost:5173` — you'll see agents registering, events st
 ### Basic Integration (Any Python Agent)
 
 ```python
-from sentinel import SentinelAgent
+from sentinel import AegisAgent
 
 # 1. Create a sentinel-monitored agent
-agent = SentinelAgent(
+agent = AegisAgent(
     name="MyAgent",
     framework="custom",
     server_url="http://localhost:8000",
@@ -278,10 +278,10 @@ access_credentials("aws_secret_key")
 
 ```python
 from langgraph.graph import StateGraph
-from sentinel import SentinelAgent
+from sentinel import AegisAgent
 from sentinel.adapters.langgraph import wrap_tools
 
-agent = SentinelAgent(
+agent = AegisAgent(
     name="LangGraph-Research-Agent",
     framework="LangGraph",
     server_url="http://localhost:8000",

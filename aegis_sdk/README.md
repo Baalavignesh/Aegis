@@ -4,7 +4,7 @@ Python SDK that developers integrate into their AI agents to connect them to the
 
 ## Responsibilities
 
-- **`SentinelAgent` Class** — Main entry point for registering an agent, defining its decorator policy, and connecting to the backend
+- **`AegisAgent` Class** — Main entry point for registering an agent, defining its decorator policy, and connecting to the backend
 - **`@monitor` Decorator** — Wraps any agent tool/function to intercept calls and validate them against the decorator policy before execution
 - **Client-side Firewall** — Local policy checks that block disallowed actions immediately, without a network round-trip
 - **Thought Logging** — Optional API to log agent reasoning and chain-of-thought for auditing and debugging
@@ -31,9 +31,9 @@ pip install -e .
 ### Basic Usage
 
 ```python
-from sentinel import SentinelAgent
+from sentinel import AegisAgent
 
-agent = SentinelAgent(
+agent = AegisAgent(
     name="MyAgent",
     framework="custom",
     server_url="http://localhost:8000",
