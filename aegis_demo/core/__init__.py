@@ -1,4 +1,5 @@
 from .mock_aegis import AegisAgent, AegisBlockedError, AegisReviewError, C, get_agent_stats
+from sentinel import kill_agent, revive_agent, show_audit_log
 from .tools import (
     lookup_balance_tool,
     get_transaction_history_tool,

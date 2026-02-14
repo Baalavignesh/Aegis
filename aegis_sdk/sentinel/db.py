@@ -12,9 +12,9 @@ DB_PATH = "sentinel.db"
 
 
 @contextmanager
-def _connect(db_path: str = DB_PATH) -> Generator[sqlite3.Connection, None, None]:
+def _connect(db_path: str | None = None) -> Generator[sqlite3.Connection, None, None]:
     """Yield a short-lived SQLite connection with dict-like row access."""
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path or DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
         yield conn
@@ -28,7 +28,7 @@ def _connect(db_path: str = DB_PATH) -> Generator[sqlite3.Connection, None, None
 
 # ── Schema ──────────────────────────────────────────────────────────────────
 
-def init_db(db_path: str = DB_PATH) -> None:
+def init_db(db_path: str | None = None) -> None:
     """Create the three core tables if they don't already exist."""
     with _connect(db_path) as conn:
         conn.executescript("""
@@ -60,7 +60,7 @@ def init_db(db_path: str = DB_PATH) -> None:
 
 # ── Queries (called on every function invocation — the "poll") ──────────
 
-def get_agent_status(name: str, db_path: str = DB_PATH) -> Optional[str]:
+def get_agent_status(name: str, db_path: str | None = None) -> Optional[str]:
     """Return ``'ACTIVE'``, ``'PAUSED'``, or ``None`` if not found."""
     with _connect(db_path) as conn:
         row = conn.execute(
@@ -69,7 +69,7 @@ def get_agent_status(name: str, db_path: str = DB_PATH) -> Optional[str]:
     return row["status"] if row else None
 
 
-def get_policy(agent_name: str, action: str, db_path: str = DB_PATH) -> Optional[str]:
+def get_policy(agent_name: str, action: str, db_path: str | None = None) -> Optional[str]:
     """Return ``'ALLOW'``, ``'BLOCK'``, or ``None`` for this action."""
     with _connect(db_path) as conn:
         row = conn.execute(
@@ -86,7 +86,7 @@ def log_event(
     action: str,
     status: str,
     details: str = "",
-    db_path: str = DB_PATH,
+    db_path: str | None = None,
 ) -> None:
     """Append one row to the ``audit_log`` table."""
     with _connect(db_path) as conn:
@@ -97,7 +97,7 @@ def log_event(
         )
 
 
-def update_status(name: str, status: str, db_path: str = DB_PATH) -> None:
+def update_status(name: str, status: str, db_path: str | None = None) -> None:
     """Set an agent's status to ``'ACTIVE'`` or ``'PAUSED'``."""
     with _connect(db_path) as conn:
         conn.execute(
@@ -105,7 +105,7 @@ def update_status(name: str, status: str, db_path: str = DB_PATH) -> None:
         )
 
 
-def upsert_agent(name: str, owner: str = "", db_path: str = DB_PATH) -> None:
+def upsert_agent(name: str, owner: str = "", db_path: str | None = None) -> None:
     """Insert the agent or update the owner if it already exists."""
     with _connect(db_path) as conn:
         conn.execute(
@@ -116,7 +116,7 @@ def upsert_agent(name: str, owner: str = "", db_path: str = DB_PATH) -> None:
 
 
 def upsert_policy(
-    agent_name: str, action: str, rule_type: str, db_path: str = DB_PATH
+    agent_name: str, action: str, rule_type: str, db_path: str | None = None
 ) -> None:
     """Insert or replace a single policy row."""
     with _connect(db_path) as conn:
@@ -129,7 +129,7 @@ def upsert_policy(
 
 # ── Read helpers (for CLI / manifest) ───────────────────────────────────────
 
-def get_audit_log(agent_name: str, limit: int = 10, db_path: str = DB_PATH) -> list:
+def get_audit_log(agent_name: str, limit: int = 10, db_path: str | None = None) -> list:
     """Return the last *limit* audit-log rows for *agent_name*."""
     with _connect(db_path) as conn:
         rows = conn.execute(

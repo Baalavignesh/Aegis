@@ -115,56 +115,40 @@ Developers can optionally log agent reasoning and chain-of-thought after actions
 ## Architecture
 
 ```
-agent-sentinel/
-├── backend/                    # FastAPI Server
-│   ├── main.py                 # API endpoints + WebSocket
-│   ├── models.py               # SQLModel database schemas
-│   ├── firewall.py             # Policy enforcement engine
-│   ├── governance.py           # Rule engine + manifest analyzer
-│   ├── websocket.py            # Real-time event broadcasting
-│   └── requirements.txt
+aegis/
+├── aegis_sdk/                         # Python SDK (sentinel-guardrails)
+│   ├── sentinel/
+│   │   ├── __init__.py                # Public API exports
+│   │   ├── core.py                    # register_agent(), validate_action()
+│   │   ├── decorators.py             # @agent, @monitor (context-based)
+│   │   ├── context.py                # agent_context(), contextvars resolution
+│   │   ├── db.py                     # SQLite layer (agents, policies, audit_log)
+│   │   ├── cli.py                    # kill_agent(), revive_agent(), show_audit_log()
+│   │   └── exceptions.py            # SentinelBlockedError, SentinelKillSwitchError
+│   └── setup.py
 │
-├── sdk/                        # Python SDK (what developers integrate)
-│   ├── sentinel.py             # AegisAgent class + @monitor decorator
-│   ├── firewall.py             # Client-side policy checks
-│   ├── manifest.py             # AgentBOM manifest generator
-│   ├── adapters/
-│   │   ├── langgraph.py        # LangGraph integration
-│   │   ├── langchain.py        # LangChain integration
-│   │   └── crewai.py           # CrewAI integration
-│   ├── setup.py
+├── aegis_demo/                        # Demo — 4 LangChain agents
+│   ├── __main__.py                    # Entry point (sets DB path, loads .env)
+│   ├── run_demo.py                    # Orchestrator with summary dashboard
+│   ├── core/
+│   │   ├── mock_aegis.py             # SDK adapter (bridges SDK ↔ LangChain tools)
+│   │   └── tools.py                  # 17 shared banking tools
+│   ├── agents/                        # 4 agent definitions
+│   │   ├── customer_support_agent.py  # Well-behaved
+│   │   ├── fraud_detection_agent.py   # High-privilege
+│   │   ├── loan_processing_agent.py   # Rogue (blocked actions)
+│   │   └── marketing_agent.py         # Rogue (undeclared actions)
+│   └── data/
+│       └── fake_data.py              # SQLite seeder (customers, accounts, transactions)
+│
+├── aegis_backend/                     # FastAPI Server (spec only)
 │   └── README.md
 │
-├── frontend/                   # React Dashboard
-│   ├── src/
-│   │   ├── App.jsx             # Main application
-│   │   ├── api/client.js       # API + WebSocket client
-│   │   ├── hooks/
-│   │   │   ├── useAgents.js    # Agent state management
-│   │   │   └── useWebSocket.js # Live event stream
-│   │   └── components/
-│   │       ├── AgentCard.jsx
-│   │       ├── DecoratorPanel.jsx
-│   │       ├── DecoratorEditor.jsx
-│   │       ├── ActivityLog.jsx
-│   │       ├── DependencyGraph.jsx
-│   │       ├── GovernanceFlags.jsx
-│   │       ├── ReviewQueue.jsx
-│   │       ├── Analytics.jsx
-│   │       ├── RegisterAgent.jsx
-│   │       ├── AlertToast.jsx
-│   │       └── StatsBar.jsx
-│   └── package.json
+├── aegis_frontend/                    # React Dashboard (spec only)
+│   └── README.md
 │
-├── governance/
-│   └── rules.yaml              # Configurable governance rules
-│
-├── demo/
-│   ├── good_agent.py           # Well-behaved demo agent
-│   ├── rogue_agent.py          # Policy-violating demo agent
-│   └── run_demo.sh             # One-command full demo
-│
-└── README.md
+├── AGENT-SENTINEL-README.md           # Full platform specification
+└── README.md                          # Project overview
 ```
 
 ---
@@ -173,143 +157,134 @@ agent-sentinel/
 
 ### Prerequisites
 - Python 3.10+
-- Node.js 18+
-- pip, npm
+- A Google Gemini API key ([get one here](https://aistudio.google.com/apikey))
 
-### 1. Clone and install
-
-```bash
-git clone https://github.com/yourname/agent-sentinel.git
-cd agent-sentinel
-
-# Backend
-cd backend
-pip install -r requirements.txt
-cd ..
-
-# Frontend
-cd frontend
-npm install
-cd ..
-
-# SDK
-cd sdk
-pip install -e .
-cd ..
-```
-
-### 2. Start the platform
+### 1. Install SDK and demo dependencies
 
 ```bash
-# Terminal 1 — Backend
-cd backend
-uvicorn main:app --reload --port 8000
+git clone https://github.com/yourname/aegis.git
+cd aegis
 
-# Terminal 2 — Frontend
-cd frontend
-npm run dev
-# → Opens at http://localhost:5173
+# Install SDK
+cd aegis_sdk && pip install -e . && cd ..
 
-# Terminal 3 — Run demo agents
-cd demo
-python good_agent.py
-python rogue_agent.py
+# Install demo dependencies
+cd aegis_demo && pip install -r requirements.txt && cd ..
 ```
 
-### 3. Open dashboard
-Navigate to `http://localhost:5173` — you'll see agents registering, events streaming in, and violations being caught in real time.
+### 2. Configure and run the demo
+
+```bash
+# Set up API key
+cp aegis_demo/.env.example aegis_demo/.env
+# Edit .env and add your GOOGLE_API_KEY
+
+# Run all 4 agents
+python -m aegis_demo
+
+# Or run a specific agent
+python -m aegis_demo --agent fraud_detection
+```
+
+### 3. What you'll see
+Four agents run sequentially. Each tool call shows an AEGIS firewall decision (ALLOWED/BLOCKED/REVIEW). After all agents run, a summary dashboard shows totals, followed by a kill-switch demo and audit log dump from SQLite.
 
 ---
 
 ## SDK Usage Guide
 
+### Installation
+
+```bash
+cd aegis_sdk
+pip install -e .
+```
+
 ### Basic Integration (Any Python Agent)
 
 ```python
-from sentinel import AegisAgent
+from sentinel import agent, monitor, agent_context
 
-# 1. Create a sentinel-monitored agent
-agent = AegisAgent(
-    name="MyAgent",
-    framework="custom",
-    server_url="http://localhost:8000",
-    decorator={
-        "allowed_actions": ["read_database", "write_csv", "send_email"],
-        "blocked_actions": ["delete_records", "access_credentials", "run_shell"],
-        "allowed_data": ["sales_data", "public_analytics"],
-        "blocked_data": ["PII", "passwords", "api_keys"],
-        "allowed_servers": ["db.internal", "smtp.company.com"],
-        "blocked_servers": ["*.darkweb.*", "pastebin.com"]
-    }
-)
+# 1. Register an agent with policies (persisted to SQLite at import time)
+@agent("MyAgent", owner="alice",
+       allows=["read_database", "send_email"],
+       blocks=["delete_records", "access_credentials"])
+class MyAgent: pass
 
-# 2. Wrap your agent's tools with @agent.monitor
-@agent.monitor
+# 2. Decorate tools with @monitor — agent resolved from context at call time
+@monitor
 def read_database(query: str) -> dict:
     """This function is now monitored by Sentinel."""
     return db.execute(query)
 
-@agent.monitor
+@monitor
 def send_email(to: str, subject: str, body: str):
-    """Sentinel checks this against decorator before execution."""
+    """Sentinel checks this against policy before execution."""
     smtp.send(to, subject, body)
 
-# 3. (Optional) Log agent reasoning after actions for audit trail
-agent.log_thought("User asked for Q4 report. I'll query the sales database.")
-result = read_database("SELECT * FROM sales WHERE quarter = 'Q4'")
-
-agent.log_thought("Data retrieved. Generating CSV report.")
-# ... continues
-
-# 4. If an agent tries a blocked action:
-@agent.monitor
+@monitor
 def access_credentials(key_name: str):
     return vault.get(key_name)
 
-agent.log_thought("I need AWS keys to speed up the upload.")
-access_credentials("aws_secret_key")
-# → SentinelBlockedError raised
-# → Event logged: status="blocked"
-# → Dashboard alert fired
-# → Function NEVER executes
+# 3. Use tools inside an agent context
+with agent_context("MyAgent"):
+    read_database("SELECT * FROM sales")
+    # → ALLOWED — logged to audit_log
+
+    access_credentials("aws_secret_key")
+    # → SentinelBlockedError raised
+    # → Event logged: status="BLOCKED"
+    # → Function NEVER executes
 ```
 
-### LangGraph Integration
+### Shared Tools Across Multiple Agents
+
+The same `@monitor`-decorated function works under different agents. The policy check depends on which agent is active in the context:
 
 ```python
-from langgraph.graph import StateGraph
-from sentinel import AegisAgent
-from sentinel.adapters.langgraph import wrap_tools
+from sentinel import monitor, agent_context
+from sentinel.core import register_agent
 
-agent = AegisAgent(
-    name="LangGraph-Research-Agent",
-    framework="LangGraph",
-    server_url="http://localhost:8000",
-    decorator={...}
-)
+register_agent("SupportBot", allows=["lookup_balance"], blocks=["delete_records"])
+register_agent("AdminBot",   allows=["lookup_balance", "delete_records"])
 
-# Define your tools normally
-def search_web(query: str) -> str:
-    return google.search(query)
+@monitor
+def lookup_balance(customer_id: int) -> str:
+    return f"Balance: $5,000"
 
-def read_file(path: str) -> str:
-    return open(path).read()
+@monitor
+def delete_records(table: str) -> str:
+    return f"Deleted {table}"
 
-# Wrap all tools with Sentinel monitoring
-monitored_tools = wrap_tools(agent, [search_web, read_file])
+with agent_context("SupportBot"):
+    lookup_balance(42)    # ALLOWED
+    delete_records("tmp") # BLOCKED
 
-# Build your graph as usual — tools are now monitored
-graph = StateGraph(...)
+with agent_context("AdminBot"):
+    lookup_balance(42)    # ALLOWED
+    delete_records("tmp") # ALLOWED
 ```
 
-### Generate Agent Manifest
+### Kill Switch & Audit Log
+
+```python
+from sentinel import kill_agent, revive_agent, show_audit_log
+
+kill_agent("MyAgent")       # Immediately PAUSES — all actions blocked
+revive_agent("MyAgent")     # Reactivates agent
+show_audit_log("MyAgent")   # Print last 10 audit log entries from SQLite
+```
+
+### Framework Integration (LangChain / LangGraph)
+
+For framework-specific tool wrapping (e.g., LangChain `StructuredTool`), see the demo adapter in `aegis_demo/core/mock_aegis.py` which bridges the SDK with LangChain's tool system using `validate_action()` directly.
+
+### CLI Commands
 
 ```bash
-# Generate AgentBOM manifest from all decorated agents in your project
-sentinel manifest generate --output agent_manifest.json
-
-# Run governance checks against the manifest
-sentinel governance check --rules governance/rules.yaml --manifest agent_manifest.json
+sentinel kill <agent_name>     # Pause an agent (kill switch)
+sentinel revive <agent_name>   # Reactivate an agent
+sentinel log <agent_name>      # Show audit log
 ```
 
 ### Decorator Schema Reference
@@ -507,8 +482,11 @@ WebSocket message format:
 ### MVP (Current Sprint)
 - [ ] Dashboard with agent monitoring UI
 - [ ] FastAPI backend with SQLite
-- [ ] Python SDK with @monitor decorator
-- [ ] Decorator policy engine (allow/block/review)
+- [x] Python SDK with `@agent` and `@monitor` decorators
+- [x] Context-based policy enforcement (`agent_context` via `contextvars`)
+- [x] Decorator policy engine (allow/block/review)
+- [x] SQLite-backed audit logging
+- [x] Kill switch (PAUSED/ACTIVE) with immediate enforcement
 - [ ] Agent Manifest generation (AgentBOM)
 - [ ] Governance rule engine with YAML config
 - [ ] Multi-agent dependency graph visualization
@@ -516,7 +494,7 @@ WebSocket message format:
 - [ ] Human-in-the-loop review queue
 - [ ] Optional thought stream logging
 - [ ] Export: manifest YAML + Markdown fact sheet
-- [ ] Demo agents (good + rogue)
+- [x] Demo agents (4 LangChain + Gemini agents with governed tool calls)
 
 ### v0.2
 - [ ] Framework adapters: LangGraph, CrewAI, AutoGen, LangChain
@@ -546,17 +524,19 @@ WebSocket message format:
 ## Environment Variables
 
 ```bash
-# Backend
-SENTINEL_DB_URL=sqlite:///./sentinel.db    # Database path
-SENTINEL_HOST=0.0.0.0                       # API host
-SENTINEL_PORT=8000                          # API port
-SENTINEL_CORS_ORIGINS=http://localhost:5173  # Allowed frontend origins
-SENTINEL_LOG_LEVEL=info                     # Logging level
+# SDK (Python variable, not env var)
+# sentinel.db.DB_PATH = "sentinel.db"       # Set in code before any SDK calls
 
-# SDK
-SENTINEL_SERVER_URL=http://localhost:8000    # Backend URL
-SENTINEL_AGENT_NAME=MyAgent                 # Default agent name
-SENTINEL_AUTO_REGISTER=true                 # Auto-register on first use
+# Demo
+GOOGLE_API_KEY=your-key-here                # Required — Google Gemini API key
+GEMINI_MODEL=gemini-2.5-flash-lite          # Optional — default model
+
+# Backend (spec only — not yet implemented)
+SENTINEL_DB_URL=sqlite:///./sentinel.db
+SENTINEL_HOST=0.0.0.0
+SENTINEL_PORT=8000
+SENTINEL_CORS_ORIGINS=http://localhost:5173
+SENTINEL_LOG_LEVEL=info
 ```
 
 ---

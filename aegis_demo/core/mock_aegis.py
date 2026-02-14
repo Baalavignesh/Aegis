@@ -1,14 +1,19 @@
 """
-Aegis Demo — Mock Aegis SDK
-Provides AegisAgent with firewall logic and LangChain tool wrapping.
+Aegis Demo — SDK Adapter
+Bridges sentinel-guardrails SDK with LangChain tool wrapping and ANSI terminal output.
+Delegates agent registration, action validation, and audit logging to the real SDK.
+Retains local logic for: data/server keyword checks, REVIEW state, LangChain wrapping, ANSI output.
 """
 
 import hashlib
 import copy
-import time
 from datetime import datetime
 from functools import wraps
 from langchain_core.tools.base import ToolException
+
+from sentinel.core import register_agent, validate_action
+from sentinel import db as sentinel_db
+from sentinel.exceptions import SentinelBlockedError, SentinelKillSwitchError
 
 
 # --- ANSI Colors ---
@@ -51,8 +56,17 @@ class AegisAgent:
         self.role = role
         self.decorator = decorator
         self.digital_id = self._generate_id(name)
-        self.stats = {"allowed": 0, "blocked": 0, "review": 0}
+        self.stats = {"allowed": 0, "blocked": 0, "review": 0, "killed": 0}
         _agent_stats[self.digital_id] = {"name": name, "stats": self.stats}
+
+        # Register agent + policies in SDK's SQLite database
+        register_agent(
+            name,
+            owner=role,
+            allows=decorator.get("allowed_actions", []),
+            blocks=decorator.get("blocked_actions", []),
+        )
+
         self._print_registration()
 
     def _generate_id(self, name: str) -> str:
@@ -68,40 +82,41 @@ class AegisAgent:
 
     def _check_firewall(self, action: str, args_str: str = "") -> str:
         """
-        Firewall decision logic (matches the Aegis spec):
-        1. Action in blocked_actions? -> BLOCK
-        2. Action in allowed_actions? -> continue checks
-        3. Unknown action? -> REVIEW
-        4. Check blocked_data keywords in args -> BLOCK
-        5. Check blocked_servers in args -> BLOCK
-        6. All pass -> ALLOW
+        Firewall decision logic — delegates steps 1-3 to SDK, keeps local data/server checks.
+        1. Kill-switch check (SDK) -> KILLED
+        2. Action in blocked_actions (SDK) -> BLOCKED
+        3. Action in allowed_actions (SDK) -> continue
+        4. Unknown action (SDK returns False) -> REVIEW
+        5. Check blocked_data keywords in args -> BLOCKED
+        6. Check blocked_servers in args -> BLOCKED
+        7. All pass -> ALLOWED
         """
-        blocked_actions = self.decorator.get("blocked_actions", [])
-        allowed_actions = self.decorator.get("allowed_actions", [])
-        blocked_data = self.decorator.get("blocked_data", [])
-        blocked_servers = self.decorator.get("blocked_servers", [])
-
-        # Step 1: blocked action?
-        if action in blocked_actions:
+        # Steps 1-3: delegate to SDK (queries SQLite on every call)
+        try:
+            result = validate_action(self.name, action)
+        except SentinelKillSwitchError:
+            return "KILLED"
+        except SentinelBlockedError:
             return "BLOCKED"
 
-        # Step 2: allowed action? continue to data/server checks
-        # Step 3: unknown action -> review
-        if action not in allowed_actions:
+        # Step 4: unknown action -> REVIEW
+        if not result:
             return "REVIEW"
 
-        # Step 4: check blocked_data keywords in args
+        # Step 5: check blocked_data keywords in args
+        blocked_data = self.decorator.get("blocked_data", [])
         args_lower = args_str.lower()
         for keyword in blocked_data:
             if keyword.lower() in args_lower:
                 return "BLOCKED"
 
-        # Step 5: check blocked_servers in args
+        # Step 6: check blocked_servers in args
+        blocked_servers = self.decorator.get("blocked_servers", [])
         for server in blocked_servers:
             if server.lower() in args_lower:
                 return "BLOCKED"
 
-        # Step 6: all pass
+        # Step 7: all pass
         return "ALLOWED"
 
     def _print_decision(self, action: str, decision: str, detail: str = ""):
@@ -114,6 +129,10 @@ class AegisAgent:
             badge = f"{C.RED}{C.BOLD}BLOCKED{C.RESET}"
             icon = "x"
             self.stats["blocked"] += 1
+        elif decision == "KILLED":
+            badge = f"{C.BG_RED}{C.WHITE}{C.BOLD} KILLED {C.RESET}"
+            icon = "!"
+            self.stats["killed"] += 1
         else:
             badge = f"{C.YELLOW}{C.BOLD}REVIEW{C.RESET}"
             icon = "?"
@@ -121,6 +140,13 @@ class AegisAgent:
 
         prefix = f"{C.DIM}[{ts}]{C.RESET} {C.MAGENTA}[AEGIS]{C.RESET}"
         print(f"  {prefix} {action} -> [{icon}] {badge}  {C.DIM}{detail}{C.RESET}")
+
+    def _log_to_sdk(self, action: str, decision: str):
+        """Log the decision to the SDK's audit_log table."""
+        # Map REVIEW -> BLOCKED for SDK (CHECK constraint only allows ALLOWED/BLOCKED/KILLED)
+        sdk_status = "BLOCKED" if decision == "REVIEW" else decision
+        detail = f"REVIEW: undeclared action" if decision == "REVIEW" else ""
+        sentinel_db.log_event(self.name, action, sdk_status, detail)
 
     def log_thought(self, message: str):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -135,8 +161,14 @@ class AegisAgent:
             args_str = " ".join(str(a) for a in args) + " " + " ".join(str(v) for v in kwargs.values())
             decision = agent._check_firewall(tool_name, args_str)
             agent._print_decision(tool_name, decision)
+            agent._log_to_sdk(tool_name, decision)
 
-            if decision == "BLOCKED":
+            if decision == "KILLED":
+                raise ToolException(
+                    f"AEGIS FIREWALL: Agent {agent.name} ({agent.digital_id}) is KILLED (paused). "
+                    f"All operations suspended. Do NOT retry any actions."
+                )
+            elif decision == "BLOCKED":
                 raise ToolException(
                     f"AEGIS FIREWALL: Action '{tool_name}' is BLOCKED by policy for agent {agent.name} ({agent.digital_id}). "
                     f"This action violates the agent's decorator policy. Do NOT retry this action."

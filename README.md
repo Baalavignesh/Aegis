@@ -1,23 +1,117 @@
-A governance for AI Agents to know what each agent is meant to do and make sure no AI will hallucinate. 
+# Aegis — AI Agent Governance Platform
 
-The idea is to create a package that act as a decorator which we add above each Agent created. The user manually types what the agent is supposed to do and wihch data it can handle. 
+**Monitor, control, and secure autonomous AI agents.**
 
-Once we run a command, it will create a config.json file which can be used to display the information in a neat format in a website.
+Aegis is a firewall and observability layer for AI agents. It gives developers and organizations full visibility into what agents do and what they access — with the power to stop them when they deviate.
 
-If the user makes a mistake/ if the user didn't write a decorator. We will have a custom agent that will use certain tools to write the decorator for the user.
+> Think of it as **Cloudflare for AI Agents** — outbound policy enforcement, governance, and audit for any autonomous system.
 
-If the Agent is trying to do an operation that it is not meant to do, such as accessing certain information by trying to bypass, we hold it and make sure it won't move forward.
+## The Problem
 
-Each agent gets a unique identity with declared capabilities, permissions, and ownership, similar to how IAM works for human users in cloud platforms.
+AI agents (LangGraph, CrewAI, AutoGen, LangChain) are increasingly autonomous. They call APIs, access databases, read files, and make decisions — but there's no standardized way to:
 
-dashboard and visualization — the web UI that shows the agent list, risk badges, dependency graph.
+- **See** what an agent is doing in real time
+- **Control** what actions an agent is allowed to take
+- **Stop** an agent when it deviates from expected behavior
+- **Audit** every decision an agent made after the fact
 
-So the decorator isn't just metadata anymore, it's a guardrail wrapper. Think of it like a middleware that intercepts every action the agent takes and validates it against the declared permissions before letting it through.
+## How It Works
 
-AgentBOM's governance rule engine automatically scans each agent's manifest against a set of configurable rules defined in YAML — such as "any agent accessing PII must have a human approval step" or "production write access requires an assigned owner." When violations are detected, they surface on the dashboard with severity levels and suggested fixes. An LLM layer enriches each flag with a contextual, human-readable risk explanation. This turns governance from a manual audit process into an automated, continuous check that runs alongside development — catching policy gaps the moment they appear rather than weeks later during a compliance review.
+```
+Developer defines policy          Sentinel enforces it
+─────────────────────────         ──────────────────────────────
+@agent("SupportBot",              Every tool call is intercepted:
+  allows=["lookup_balance"],        1. Check agent status (kill-switch)
+  blocks=["delete_records"])        2. Check action policy (ALLOW/BLOCK)
+                                    3. Check data & server restrictions
+@monitor                            4. Log decision to audit_log
+def lookup_balance(cid): ...        5. Execute or raise error
 
-LLM-powered summarization — auto-generating human-readable descriptions and risk assessments from the manifest. 
+with agent_context("SupportBot"):
+    lookup_balance(42)   # ALLOWED
+    delete_records("x")  # BLOCKED
+```
 
-Exports — the audit-ready Markdown/PDF fact sheets.  
+### Key Feature: Context-Based Policy Enforcement
 
-AgentBOM automatically maps how agents depend on each other by reading the dependencies field in each agent's manifest. It builds a directed graph where agents are nodes, calls between them are edges, and tools and data sources branch off as connected endpoints. This renders as an interactive visualization on the dashboard — click any agent and instantly trace what it calls, what calls it, and what data flows through it. When something breaks or access gets revoked, teams can immediately see the blast radius instead of manually tracing through code across multiple repos. (MultiAgent)
+Tools are shared — the same `lookup_balance` function might be called by a Support agent, a Fraud agent, and an Admin agent. Aegis uses Python's `contextvars` to resolve which agent is calling at runtime:
+
+```python
+@monitor
+def lookup_balance(customer_id): ...
+
+with agent_context("SupportBot"):
+    lookup_balance(42)     # checks SupportBot's policies
+
+with agent_context("FraudBot"):
+    lookup_balance(42)     # checks FraudBot's policies
+```
+
+## Project Structure
+
+| Module | Description | Status |
+|--------|------------|--------|
+| **aegis_sdk/** | `sentinel-guardrails` — Python SDK with `@agent`, `@monitor`, `agent_context`, SQLite policy engine, kill-switch, audit log | Implemented |
+| **aegis_demo/** | 4 LangChain + Gemini agents (banking scenario) demonstrating firewall governance | Implemented |
+| **aegis_backend/** | FastAPI server — agent registry, policy engine, governance rules, WebSocket events | Spec only |
+| **aegis_frontend/** | React dashboard — live monitoring, dependency graph, review queue, analytics | Spec only |
+
+## Quick Start
+
+```bash
+# 1. Install the SDK
+cd aegis_sdk && pip install -e . && cd ..
+
+# 2. Install demo dependencies
+cd aegis_demo && pip install -r requirements.txt && cd ..
+
+# 3. Configure API key
+cp aegis_demo/.env.example aegis_demo/.env
+# Edit .env and add your GOOGLE_API_KEY
+
+# 4. Run the demo
+python -m aegis_demo
+```
+
+## SDK At a Glance
+
+```python
+from sentinel import agent, monitor, agent_context, kill_agent, revive_agent
+
+# Register agent with policies (persisted to SQLite)
+@agent("MyBot", owner="alice", allows=["read_data"], blocks=["delete_data"])
+class MyBot: pass
+
+# Decorate shared tools — agent resolved from context at call time
+@monitor
+def read_data(query: str) -> str:
+    return db.execute(query)
+
+# Use tools under an agent's context
+with agent_context("MyBot"):
+    read_data("SELECT * FROM users")  # ALLOWED — logged to audit_log
+
+# Kill switch — immediately blocks all actions
+kill_agent("MyBot")
+# ... later ...
+revive_agent("MyBot")
+```
+
+## Core Concepts
+
+- **Digital Identity** — Each agent gets a unique ID (`AGT-0x{hash}`) tracked across its lifecycle
+- **Decorator Policy** — Three-dimensional permissions: actions, data, and servers with allowed/blocked lists
+- **Firewall Logic** — blocked → BLOCK; allowed → continue checks; unknown → REVIEW; then check data and servers
+- **Agent Context** — `contextvars`-based resolution so shared tools enforce the correct agent's policy at call time
+- **Kill Switch** — Set any agent to PAUSED instantly; all actions blocked until revived
+- **Audit Log** — Every decision (ALLOWED/BLOCKED/KILLED) persisted to SQLite with timestamps
+
+## Full Documentation
+
+- **[AGENT-SENTINEL-README.md](AGENT-SENTINEL-README.md)** — Comprehensive platform spec: API reference, SDK usage guide, governance rules, roadmap
+- **[aegis_sdk/README.md](aegis_sdk/README.md)** — SDK API reference and usage examples
+- **[aegis_demo/README.md](aegis_demo/README.md)** — Demo setup, agent policies, and expected output
+
+## License
+
+MIT License
