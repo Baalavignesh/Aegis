@@ -4,6 +4,3 @@ pydantic
 pymongo
 python-dotenv
 dnspython
-langchain
-langchain-google-genai
-langgraph

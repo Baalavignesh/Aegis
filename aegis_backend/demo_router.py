@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from aegis_demo.core import AegisAgent, ALL_TOOLS
 from aegis_demo.data import seed_database
-import sentinel.db as sdb
+import mongo as sdb
 
 # LangChain / Gemini
 from langchain_google_genai import ChatGoogleGenerativeAI
