@@ -6,7 +6,6 @@ and the SDK communicate with the database exclusively through this API.
 """
 
 import hashlib
-import os
 from datetime import datetime, timedelta
 from typing import Optional
 

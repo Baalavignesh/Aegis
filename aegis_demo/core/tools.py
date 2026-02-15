@@ -7,7 +7,7 @@ import random
 from datetime import datetime
 from langchain_core.tools import tool
 
-from sentinel.db import get_db
+from .demo_db import get_db
 
 # ─── Tool Functions ───────────────────────────────────────────────
 

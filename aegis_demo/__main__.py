@@ -1,8 +1,8 @@
 import os
 import sys
 
-# Load .env from the aegis_demo directory BEFORE importing sentinel.db,
-# so MONGO_URI is available when the SDK initializes its MongoDB client.
+# Load .env from the aegis_demo directory BEFORE importing sentinel,
+# so AEGIS_BACKEND_URL / GOOGLE_API_KEY are available.
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 

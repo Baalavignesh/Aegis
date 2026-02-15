@@ -8,7 +8,7 @@ import random
 from datetime import datetime, timedelta
 from typing import Tuple
 
-from sentinel.db import get_db
+from aegis_demo.core.demo_db import get_db
 
 CUSTOMERS = [
     ("Alice Johnson", "123-45-6789", "4532-8901-2345-6781", "555-0101", "alice.j@email.com", "123 Oak St, Springfield, IL", "1985-03-14"),

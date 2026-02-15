@@ -11,14 +11,17 @@ import os
 import time
 import traceback
 
+import httpx
+
 from .core import C, get_agent_stats
-from .data import seed_database
 from .agents import (
     customer_support_agent,
     fraud_detection_agent,
     loan_processing_agent,
     marketing_agent,
 )
+
+BACKEND_URL = os.getenv("AEGIS_BACKEND_URL", "http://localhost:8000")
 
 AGENTS = {
     "customer_support": (customer_support_agent, "Customer Support"),
@@ -76,18 +79,17 @@ def print_summary():
     print()
 
 
-def clean_sentinel_db():
-    """Drop all collections for a fresh run."""
-    import sentinel.db as sdb
-    db = sdb.get_db()
-    for coll in ["agents", "policies", "audit_log", "pending_approvals", "counters"]:
-        db[coll].drop()
+def seed_via_backend():
+    """Call the backend /demo/seed endpoint to reset and seed all data."""
+    resp = httpx.post(f"{BACKEND_URL}/demo/seed", timeout=30.0)
+    resp.raise_for_status()
+    return resp.json()
 
 
 def demo_kill_switch():
     """Demonstrate the kill-switch and audit log features."""
     from sentinel import kill_agent, revive_agent, show_audit_log
-    import sentinel.db as sdb
+    from sentinel import db as sdb
 
     print(f"\n{C.CYAN}{C.BOLD}")
     print("+" + "=" * 54 + "+")
@@ -95,7 +97,6 @@ def demo_kill_switch():
     print("+" + "=" * 54 + "+")
     print(C.RESET)
 
-    # Pick the first agent that ran
     stats = get_agent_stats()
     if not stats:
         print(f"  {C.DIM}No agents ran — skipping kill-switch demo.{C.RESET}")
@@ -120,7 +121,7 @@ def demo_kill_switch():
     print(f"  Agent status: {C.GREEN}{C.BOLD}{status}{C.RESET}")
 
     # Show audit log
-    print(f"\n  {C.BOLD}Audit log from MongoDB:{C.RESET}")
+    print(f"\n  {C.BOLD}Audit log:{C.RESET}")
     show_audit_log(agent_name, limit=20)
 
 
@@ -147,13 +148,15 @@ def main():
 
     print_banner()
 
-    # Clean slate — drop MongoDB collections so each run is reproducible
-    clean_sentinel_db()
-
-    # Seed database
-    print(f"  {C.DIM}Seeding database...{C.RESET}", end=" ")
-    c, a, t = seed_database()
-    print(f"{C.GREEN}{c} customers, {a} accounts, {t} transactions{C.RESET}\n")
+    # Seed database via backend API
+    print(f"  {C.DIM}Seeding database via backend...{C.RESET}", end=" ")
+    try:
+        result = seed_via_backend()
+        print(f"{C.GREEN}{result['customers']} customers, {result['accounts']} accounts, {result['transactions']} transactions{C.RESET}\n")
+    except Exception as e:
+        print(f"{C.RED}Failed to seed: {e}{C.RESET}")
+        print(f"  {C.YELLOW}Make sure the backend is running: uvicorn backend:app --port 8000{C.RESET}")
+        return
 
     if args.agent:
         run_agent(args.agent)
@@ -164,7 +167,7 @@ def main():
         for i, key in enumerate(keys):
             run_agent(key)
             if i < len(keys) - 1:
-                wait = 20  # Stay under 5 RPM for strict models; 2.5 Flash Lite allows 10 RPM
+                wait = 20
                 print(f"\n  {C.DIM}Waiting {wait}s for API rate limit...{C.RESET}", flush=True)
                 time.sleep(wait)
 
