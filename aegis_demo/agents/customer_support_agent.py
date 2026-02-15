@@ -5,7 +5,7 @@ A compliant agent that only performs allowed actions.
 
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.prebuilt import create_agent
+from langchain.agents import create_agent
 
 from ..core import AegisAgent
 from ..core import lookup_balance_tool, get_transaction_history_tool, send_notification_tool

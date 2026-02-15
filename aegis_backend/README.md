@@ -1,32 +1,80 @@
 # Aegis Backend
 
-FastAPI server that powers the Agent Sentinel platform.
-
-## Responsibilities
-
-- **Agent Registry** — Register, update, and manage AI agents with unique Digital IDs (`AGT-0x{hash}`)
-- **Firewall / Policy Engine** — Intercept and validate every agent action against its decorator policy (allow / block / review)
-- **Activity & Thought Logging** — Store and serve the full audit trail of agent actions and optional reasoning logs
-- **Governance Engine** — Run configurable YAML-based rules against agent manifests and surface violations
-- **Manifest Management** — Generate and store Agent Bill of Materials (AgentBOM) for every registered agent
-- **Review Queue** — Hold unknown actions for human approval and process approve/reject decisions
-- **WebSocket Events** — Broadcast real-time agent activity to the frontend dashboard
-- **Analytics & Exports** — Aggregate stats, timelines, and export audit-ready Markdown/YAML/PDF reports
+FastAPI server that powers the Aegis governance dashboard. Reads directly from the SDK's `sentinel.db` using raw SQL queries — no ORM, no table redefinition.
 
 ## Tech Stack
 
 - **Framework:** FastAPI
-- **Database:** SQLite (MVP) → PostgreSQL (production)
-- **ORM:** SQLModel
-- **Real-time:** WebSocket via FastAPI
-- **Auth:** None for MVP (RBAC planned for v1.0)
+- **Database:** SQLite (shared with `sentinel-guardrails` SDK)
+- **Queries:** Raw SQL via `sqlite3` (no ORM)
+- **Auth:** None (RBAC planned for v1.0)
 
 ## Getting Started
 
 ```bash
 cd aegis_backend
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+uvicorn backend:app --reload --port 8000
 ```
 
-API docs will be available at `http://localhost:8000/docs`.
+API docs at `http://localhost:8000/docs` (Swagger UI).
+
+### Database Path
+
+By default, the backend resolves to `../aegis_demo/data/sentinel.db` relative to `backend.py`. Override with the `SENTINEL_DB_PATH` environment variable:
+
+```bash
+SENTINEL_DB_PATH=/path/to/sentinel.db uvicorn backend:app --reload --port 8000
+```
+
+## Implemented Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/stats` | Aggregate platform stats — total agents, total actions, blocked count, review count, overall risk score |
+| `GET` | `/agents` | List all registered agents with status (ACTIVE/PAUSED), owner, action counts, and computed risk score |
+| `GET` | `/agents/{name}/logs` | Get the full activity log for a specific agent (sorted newest first) |
+| `GET` | `/agents/{name}/policies` | Get an agent's policy rules — lists of allowed and blocked actions |
+| `POST` | `/agents/{name}/toggle` | Toggle agent status between ACTIVE and PAUSED (kill-switch). Body: `{"status": "PAUSED"}` |
+| `GET` | `/logs` | Get all activity logs across all agents (sorted newest first) |
+| `GET` | `/approvals/pending` | Get all pending human-in-the-loop approval requests |
+| `POST` | `/approvals/{id}/decide` | Approve or deny a pending approval. Body: `{"decision": "APPROVED"}` or `{"decision": "DENIED"}` |
+
+## Future Improvements
+
+The following APIs are designed in the platform spec ([AGENT-SENTINEL-README.md](../AGENT-SENTINEL-README.md)) but not yet implemented:
+
+### Agent Manifests
+Auto-generated Agent Bill of Materials (AgentBOM) documenting every agent's identity, capabilities, tools, data access, and permissions. Serves as audit-ready documentation.
+
+`POST /api/manifests` | `GET /api/manifests` | `GET /api/manifests/{id}`
+
+### Governance Rule Engine
+YAML-configurable rules scanned against agent manifests (e.g., "PII access requires human approval"). Surfaces violations with severity levels and LLM-enriched risk explanations.
+
+`POST /api/governance/check` | `GET /api/governance/violations`
+
+### Dependency Graph
+Directed graph mapping agent-to-agent dependencies, tools, and data flows for interactive visualization.
+
+`GET /api/agents/{id}/dependencies`
+
+### Thought Stream Logging
+Optional post-action logging of agent reasoning and chain-of-thought for debugging and compliance audits.
+
+`POST /api/agents/{id}/thoughts` | `GET /api/agents/{id}/thoughts`
+
+### Analytics Timeline
+Time-series data for agent behavior trends (actions per hour/day, blocked vs. allowed) and violation breakdowns.
+
+`GET /api/stats/timeline` | `GET /api/stats/violations`
+
+### Export & Compliance
+One-click export of agent manifests (YAML) and fact sheets (Markdown/PDF) for SOC2, GDPR, and HIPAA compliance.
+
+`GET /api/export/manifest/{id}` | `GET /api/export/factsheet/{id}`
+
+### WebSocket Events
+Real-time event streaming replacing 2-second polling with instant push updates for activity, alerts, and governance violations.
+
+`WS /ws/events`

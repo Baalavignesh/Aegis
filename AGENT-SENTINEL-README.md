@@ -141,10 +141,31 @@ aegis/
 │   └── data/
 │       └── fake_data.py              # SQLite seeder (customers, accounts, transactions)
 │
-├── aegis_backend/                     # FastAPI Server (spec only)
+├── aegis_backend/                     # FastAPI Server (implemented)
+│   ├── backend.py                    # 8 REST endpoints, SQLite queries
+│   ├── requirements.txt
 │   └── README.md
 │
-├── aegis_frontend/                    # React Dashboard (spec only)
+├── aegis_frontend/                    # React Dashboard (implemented)
+│   ├── src/
+│   │   ├── api.js                    # API client (8 functions)
+│   │   ├── App.jsx                   # Router setup (5 routes)
+│   │   ├── index.css                 # Robinhood-style theme
+│   │   ├── components/               # 7 reusable components
+│   │   │   ├── Navbar.jsx            # Top nav with active underlines
+│   │   │   ├── AgentCard.jsx         # Agent grid card
+│   │   │   ├── AgentProfile.jsx      # Agent header + kill-switch
+│   │   │   ├── ApprovalCard.jsx      # Approve/deny controls
+│   │   │   ├── LiveFeed.jsx          # Real-time audit feed
+│   │   │   ├── StatsCards.jsx        # Dashboard stats
+│   │   │   └── ToolsList.jsx         # Policy/tools display
+│   │   └── pages/                    # 5 page components
+│   │       ├── DashboardPage.jsx     # Overview + alerts
+│   │       ├── AgentsPage.jsx        # Agent grid
+│   │       ├── AgentDetailPage.jsx   # Single agent view
+│   │       ├── ActivityPage.jsx      # Full audit log
+│   │       └── ApprovalsPage.jsx     # HITL review queue
+│   ├── package.json
 │   └── README.md
 │
 ├── AGENT-SENTINEL-README.md           # Full platform specification
@@ -479,22 +500,55 @@ WebSocket message format:
 
 ## Roadmap
 
-### MVP (Current Sprint)
-- [ ] Dashboard with agent monitoring UI
-- [ ] FastAPI backend with SQLite
+### MVP (Completed)
 - [x] Python SDK with `@agent` and `@monitor` decorators
 - [x] Context-based policy enforcement (`agent_context` via `contextvars`)
 - [x] Decorator policy engine (allow/block/review)
 - [x] SQLite-backed audit logging
 - [x] Kill switch (PAUSED/ACTIVE) with immediate enforcement
-- [ ] Agent Manifest generation (AgentBOM)
-- [ ] Governance rule engine with YAML config
-- [ ] Multi-agent dependency graph visualization
-- [ ] WebSocket real-time events
-- [ ] Human-in-the-loop review queue
-- [ ] Optional thought stream logging
-- [ ] Export: manifest YAML + Markdown fact sheet
 - [x] Demo agents (4 LangChain + Gemini agents with governed tool calls)
+- [x] FastAPI backend with SQLite (8 REST endpoints)
+- [x] React dashboard with agent monitoring UI (5 pages, Robinhood-style design)
+- [x] Human-in-the-loop review queue (approval/denial flow end-to-end)
+
+### Future Improvements
+
+The following features are designed and spec'd but not yet implemented. Each adds a layer of governance, observability, or compliance capability to the platform.
+
+#### Agent Manifest Generation (AgentBOM)
+Automatically generate an `agent_manifest.json` from decorator data across the entire codebase — an Agent Bill of Materials. Documents every agent's identity, capabilities, tools, data access, permissions, dependencies on other agents, and human-in-the-loop requirements. This serves as a single source of truth for the agent ecosystem and can be exported as audit-ready documentation.
+
+**Planned endpoints:** `POST /api/manifests` (upload/register), `GET /api/manifests` (list all), `GET /api/manifests/{id}` (details + LLM summary)
+
+#### Governance Rule Engine
+A configurable rule engine that scans each agent's manifest against policies defined in YAML — such as "any agent accessing PII must have a human approval step" or "production write access requires an assigned owner." Violations surface on the dashboard with severity levels (critical/high/medium) and suggested remediations. An LLM layer enriches each flag with a contextual, human-readable risk explanation.
+
+**Planned endpoints:** `POST /api/governance/check` (run rules against a manifest), `GET /api/governance/violations` (list all violations)
+
+#### Multi-Agent Dependency Graph
+Automatically maps how agents depend on each other by reading the `dependencies` field in each agent's manifest. Builds a directed graph where agents are nodes, calls between them are edges, and tools/data sources branch off as connected endpoints. Renders as an interactive visualization (D3.js or React Flow) on the dashboard — click any agent and instantly trace what it calls, what calls it, and what data flows through it.
+
+**Planned endpoint:** `GET /api/agents/{id}/dependencies`
+
+#### Thought Stream Logging
+Optional post-action logging of agent reasoning and chain-of-thought. Not real-time interception — it's a debug/audit log for understanding *why* an agent made a decision, reviewing failed or blocked actions, and building audit trails that include agent reasoning alongside firewall decisions.
+
+**Planned endpoints:** `POST /api/agents/{id}/thoughts` (log a thought), `GET /api/agents/{id}/thoughts` (retrieve thought log, paginated)
+
+#### Analytics Timeline & Violation Breakdown
+Time-series data showing agent behavior over time (actions per hour/day, blocked vs. allowed trends) and violation breakdowns across all agents. Enables trend analysis, anomaly detection, and compliance reporting through charts on the dashboard.
+
+**Planned endpoints:** `GET /api/stats/timeline` (activity timeline data), `GET /api/stats/violations` (violation breakdown)
+
+#### Export & Compliance Reports
+One-click export of agent manifests as YAML and agent fact sheets as Markdown/PDF for compliance frameworks (SOC2, GDPR, HIPAA). Provides audit-ready documentation without manual effort — every agent's identity, permissions, activity history, and governance status in a single downloadable report.
+
+**Planned endpoints:** `GET /api/export/manifest/{id}` (YAML export), `GET /api/export/factsheet/{id}` (Markdown/PDF export)
+
+#### WebSocket Real-Time Events
+A persistent WebSocket connection that broadcasts agent events in real time — replacing the current 2-second polling interval with instant push updates. Streams activity events, thought logs, alerts, and governance violations as they happen.
+
+**Planned endpoint:** `WS /ws/events`
 
 ### v0.2
 - [ ] Framework adapters: LangGraph, CrewAI, AutoGen, LangChain
@@ -531,12 +585,9 @@ WebSocket message format:
 GOOGLE_API_KEY=your-key-here                # Required — Google Gemini API key
 GEMINI_MODEL=gemini-2.5-flash-lite          # Optional — default model
 
-# Backend (spec only — not yet implemented)
-SENTINEL_DB_URL=sqlite:///./sentinel.db
-SENTINEL_HOST=0.0.0.0
-SENTINEL_PORT=8000
-SENTINEL_CORS_ORIGINS=http://localhost:5173
-SENTINEL_LOG_LEVEL=info
+# Backend
+SENTINEL_DB_PATH=/path/to/sentinel.db   # Override default DB path
+# Default: resolves to ../aegis_demo/data/sentinel.db relative to backend.py
 ```
 
 ---

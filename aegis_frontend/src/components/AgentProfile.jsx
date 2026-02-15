@@ -1,106 +1,104 @@
 import { useState } from 'react';
-import { Power, ShieldOff, ShieldCheck, User, Clock, Hash, BarChart3 } from 'lucide-react';
+import { Power } from 'lucide-react';
 
 export default function AgentProfile({ agent, onToggle }) {
-    const [toggling, setToggling] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
-    if (!agent) {
-        return (
-            <div className="rounded-xl border border-border bg-bg-card p-8 flex items-center justify-center">
-                <p className="text-text-dim text-sm">Select an agent from the sidebar</p>
-            </div>
-        );
+  if (!agent) {
+    return (
+      <div className="border border-divider rounded-lg p-12 text-center">
+        <p className="text-ink-faint text-sm">Select an agent to view details</p>
+      </div>
+    );
+  }
+
+  const isPaused = agent.status === 'PAUSED';
+
+  const handleToggle = async () => {
+    setToggling(true);
+    try {
+      await onToggle(agent.name, isPaused ? 'ACTIVE' : 'PAUSED');
+    } finally {
+      setToggling(false);
     }
+  };
 
-    const isPaused = agent.status === 'PAUSED';
-
-    const handleToggle = async () => {
-        setToggling(true);
-        try {
-            await onToggle(agent.name, isPaused ? 'ACTIVE' : 'PAUSED');
-        } finally {
-            setToggling(false);
-        }
-    };
-
-    return (
-        <div className="rounded-xl border border-border bg-bg-card overflow-hidden">
-            {/* Header bar */}
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${isPaused ? 'bg-neon-red/15' : 'bg-neon-green/15'}`}>
-                        {isPaused
-                            ? <ShieldOff className="w-5 h-5 text-neon-red" />
-                            : <ShieldCheck className="w-5 h-5 text-neon-green" />
-                        }
-                    </div>
-                    <div>
-                        <h2 className="text-base font-bold text-text-primary">{agent.name}</h2>
-                        <p className="text-[10px] text-text-dim font-mono">{agent.id}</p>
-                    </div>
-                    <span className={`ml-3 px-2.5 py-1 rounded-full text-[10px] font-bold font-mono uppercase tracking-wider
-            ${isPaused
-                            ? 'bg-neon-red/15 text-neon-red border border-neon-red/30'
-                            : 'bg-neon-green/15 text-neon-green border border-neon-green/30'
-                        }`}
-                    >
-                        {agent.status}
-                    </span>
-                </div>
-
-                {/* Kill / Revive button */}
-                <button
-                    onClick={handleToggle}
-                    disabled={toggling}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all duration-200
-            ${isPaused
-                            ? 'bg-neon-green/15 text-neon-green border border-neon-green/30 hover:bg-neon-green/25 hover:shadow-[0_0_20px_rgba(57,255,20,0.15)]'
-                            : 'bg-neon-red/15 text-neon-red border border-neon-red/30 hover:bg-neon-red/25 hover:shadow-[0_0_20px_rgba(255,23,68,0.15)]'
-                        }
-            disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                    <Power className="w-4 h-4" />
-                    {toggling ? 'Working...' : isPaused ? 'REVIVE AGENT' : 'BLOCK AGENT'}
-                </button>
-            </div>
-
-            {/* Details grid */}
-            <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
-                <DetailItem icon={User} label="Owner" value={agent.owner || 'N/A'} />
-                <DetailItem icon={Clock} label="Created" value={agent.created_at?.split(' ')[0] || 'N/A'} />
-                <DetailItem icon={Hash} label="Framework" value={agent.framework} />
-                <DetailItem icon={BarChart3} label="Risk Score" value={`${agent.risk_score}%`}
-                    valueColor={agent.risk_score > 50 ? 'text-neon-red' : agent.risk_score > 20 ? 'text-neon-amber' : 'text-neon-green'}
-                />
-            </div>
-
-            {/* Stats row */}
-            <div className="px-5 pb-5 grid grid-cols-3 gap-3">
-                <MiniStat label="Total Logs" value={agent.total_logs} color="text-neon-blue" />
-                <MiniStat label="Allowed" value={agent.allowed_count} color="text-neon-green" />
-                <MiniStat label="Blocked" value={agent.blocked_count} color="text-neon-red" />
-            </div>
+  return (
+    <div className="border border-divider rounded-lg overflow-hidden">
+      {/* Header */}
+      <div className="px-5 sm:px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-ink">{agent.name}</h2>
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+              isPaused
+                ? 'bg-negative-bg text-negative'
+                : 'bg-positive-bg text-positive'
+            }`}>
+              {agent.status}
+            </span>
+          </div>
+          <p className="text-sm text-ink-faint mt-0.5">{agent.id}</p>
         </div>
-    );
+
+        <button
+          onClick={handleToggle}
+          disabled={toggling}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-colors self-start sm:self-auto ${
+            isPaused
+              ? 'bg-positive text-white hover:bg-positive/90'
+              : 'bg-negative text-white hover:bg-negative/90'
+          } disabled:opacity-50`}
+        >
+          <Power className="w-4 h-4" />
+          {toggling ? '...' : isPaused ? 'Revive' : 'Kill'}
+        </button>
+      </div>
+
+      <div className="border-t border-divider" />
+
+      {/* Details */}
+      <div className="grid grid-cols-2 divide-x divide-divider">
+        <div className="p-5">
+          <p className="text-xs text-ink-faint">Owner</p>
+          <p className="text-sm font-medium text-ink mt-1">{agent.owner || 'N/A'}</p>
+          <div className="mt-4">
+            <p className="text-xs text-ink-faint">Created</p>
+            <p className="text-sm font-medium text-ink mt-1">{agent.created_at?.split(' ')[0] || 'N/A'}</p>
+          </div>
+        </div>
+        <div className="p-5">
+          <p className="text-xs text-ink-faint">Framework</p>
+          <p className="text-sm font-medium text-ink mt-1">{agent.framework}</p>
+          <div className="mt-4">
+            <p className="text-xs text-ink-faint">Risk score</p>
+            <p className={`text-sm font-semibold mt-1 ${
+              agent.risk_score > 50 ? 'text-negative'
+                : agent.risk_score > 20 ? 'text-caution' : 'text-positive'
+            }`}>
+              {agent.risk_score}%
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-divider" />
+
+      {/* Stats row */}
+      <div className="grid grid-cols-3 divide-x divide-divider">
+        <StatCell label="Total actions" value={agent.total_logs} />
+        <StatCell label="Allowed" value={agent.allowed_count} color="text-positive" />
+        <StatCell label="Blocked" value={agent.blocked_count} color="text-negative" />
+      </div>
+    </div>
+  );
 }
 
-function DetailItem({ icon: Icon, label, value, valueColor = 'text-text-primary' }) {
-    return (
-        <div className="flex items-start gap-2">
-            <Icon className="w-3.5 h-3.5 text-text-dim mt-0.5 flex-shrink-0" />
-            <div>
-                <p className="text-[10px] text-text-dim uppercase tracking-wider">{label}</p>
-                <p className={`text-sm font-mono font-medium mt-0.5 truncate ${valueColor}`}>{value}</p>
-            </div>
-        </div>
-    );
-}
-
-function MiniStat({ label, value, color }) {
-    return (
-        <div className="rounded-lg bg-bg-primary border border-border p-3 text-center">
-            <p className={`text-xl font-bold font-mono ${color}`}>{value}</p>
-            <p className="text-[10px] text-text-dim mt-1">{label}</p>
-        </div>
-    );
+function StatCell({ label, value, color = 'text-ink' }) {
+  return (
+    <div className="p-4 text-center">
+      <p className={`text-xl font-bold ${color}`}>{value}</p>
+      <p className="text-xs text-ink-faint mt-0.5">{label}</p>
+    </div>
+  );
 }

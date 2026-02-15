@@ -5,7 +5,7 @@ A compliant agent with elevated permissions including SSN access for identity ve
 
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.prebuilt import create_agent
+from langchain.agents import create_agent
 
 from ..core import AegisAgent
 from ..core import scan_transactions_tool, flag_account_tool, verify_identity_tool, access_ssn_tool

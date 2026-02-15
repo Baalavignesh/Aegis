@@ -6,14 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Aegis (Agent Sentinel) is an AI agent governance platform — a firewall and observability layer for autonomous AI agents. It intercepts agent actions, validates them against declared policies (decorators), and provides real-time monitoring, audit trails, and human-in-the-loop controls.
 
-**Current state:** The SDK, demo, AND backend are fully implemented and synced. The frontend is a documentation scaffold.
+**Current state:** All four modules are fully implemented and synced. The SDK, demo, backend, and frontend are working end-to-end.
 
 ## Architecture
 
 Three-tier system with four directories:
 
 - **aegis_backend/** — FastAPI server (port 8000): agent registry, firewall/policy engine, governance rules, review queue, analytics. Implemented with SQLModel + SQLite. API docs at `/docs`.
-- **aegis_frontend/** — React SPA via Vite (port 5173): agent dashboard, live activity feed, dependency graph visualization, governance flags, review queue UI, export controls. *(Not yet implemented — README spec only.)*
+- **aegis_frontend/** — React SPA via Vite (port 5173): Robinhood-style dashboard with 5 pages (Dashboard, Agents, Agent Detail, Activity, Approvals), real-time polling, agent kill-switch toggle, HITL approval queue. Built with React Router, Tailwind CSS v4, and Lucide icons.
 - **aegis_sdk/** — `sentinel-guardrails` Python library: `@agent` and `@monitor` decorators, `agent_context` for dynamic agent resolution, SQLite-backed policy enforcement, kill-switch (`PAUSED`/`ACTIVE`), audit logging, CLI helpers. No network dependency — all local via SQLite.
 - **aegis_demo/** — Four LangChain + Gemini agents (Customer Support, Fraud Detection, Loan Processing, Marketing) demonstrating Aegis firewall governance over a personal finance scenario with a seeded SQLite bank database. Integrates with the real SDK via an adapter in `core/mock_aegis.py`.
 
@@ -44,7 +44,7 @@ cd aegis_backend
 pip install -r requirements.txt
 uvicorn backend:app --reload --port 8000
 
-# Frontend (not yet implemented)
+# Frontend (Robinhood-style React dashboard)
 cd aegis_frontend
 npm install
 npm run dev          # serves at http://localhost:5173
@@ -54,14 +54,16 @@ npm run dev          # serves at http://localhost:5173
 
 | Module | Stack |
 |--------|-------|
-| Backend | FastAPI, SQLModel, SQLite (MVP) → PostgreSQL, WebSocket *(spec only)* |
-| Frontend | React, Vite, WebSocket client, D3.js/React Flow, Recharts *(spec only)* |
+| Backend | FastAPI, SQLite, raw SQL queries (no ORM) |
+| Frontend | React 19, Vite, React Router v6, Tailwind CSS v4, Lucide icons |
 | SDK | Python 3.10+, SQLite, `contextvars`, decorators (`@agent`, `@monitor`), Click CLI |
 | Demo | LangChain, LangGraph, Gemini (google-genai), python-dotenv |
 
 ## API Structure
 
-Backend exposes REST endpoints under `/api/` for: agents (CRUD + status), activity/thought logging, manifests, governance checks/violations, review queue (approve/reject), analytics/exports, and a WebSocket at `WS /ws/events` for real-time event streaming. Full reference in `AGENT-SENTINEL-README.md`.
+Backend exposes 8 REST endpoints (no `/api/` prefix): `GET /stats`, `GET /agents`, `GET /agents/{name}/logs`, `GET /agents/{name}/policies`, `POST /agents/{name}/toggle`, `GET /logs`, `GET /approvals/pending`, `POST /approvals/{id}/decide`. Interactive docs at `http://localhost:8000/docs`.
+
+Additional APIs from the spec (manifests, governance rules, dependency graph, thought logging, analytics timeline, exports, WebSocket) are documented as future improvements in README.md.
 
 ## Environment Variables
 
@@ -81,6 +83,20 @@ Demo: `GOOGLE_API_KEY` (in `aegis_demo/.env`), `GEMINI_MODEL` (optional, default
   - `cli.py` — `kill_agent()`, `revive_agent()`, `show_audit_log()`
   - `exceptions.py` — `SentinelBlockedError`, `SentinelKillSwitchError`, `SentinelApprovalError`
 - `aegis_demo/core/mock_aegis.py` — SDK adapter that bridges `sentinel-guardrails` with LangChain tool wrapping and ANSI terminal output
+- `aegis_frontend/src/` — Frontend source:
+  - `api.js` — 8 API functions against localhost:8000
+  - `components/Navbar.jsx` — Top navigation with active link underlines and approval badge
+  - `components/AgentCard.jsx` — Agent card for grid view
+  - `components/AgentProfile.jsx` — Agent detail header with kill-switch toggle
+  - `components/ApprovalCard.jsx` — Individual approval with approve/deny buttons
+  - `components/LiveFeed.jsx` — Real-time audit log feed component
+  - `components/StatsCards.jsx` — Dashboard stat cards
+  - `components/ToolsList.jsx` — Agent policy/tools display
+  - `pages/DashboardPage.jsx` — Overview with stats, agents, activity, approval alerts
+  - `pages/AgentsPage.jsx` — Grid of all registered agents
+  - `pages/AgentDetailPage.jsx` — Single agent profile, tools, and live feed
+  - `pages/ActivityPage.jsx` — Full audit log with agent filter
+  - `pages/ApprovalsPage.jsx` — Pending HITL approval queue
 
 ## Architecture Note
 

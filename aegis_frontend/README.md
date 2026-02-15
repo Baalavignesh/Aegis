@@ -1,16 +1,87 @@
-# React + Vite
+# Aegis Frontend — Governance Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React SPA providing a real-time monitoring dashboard for the Aegis AI agent governance platform. Built with a Robinhood-inspired design language — clean white backgrounds, Inter font, green/red status colors, and minimal borders.
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Framework:** React 19 + Vite
+- **Routing:** React Router v6
+- **Styling:** Tailwind CSS v4 with custom theme variables
+- **Icons:** Lucide React
+- **Data:** REST API polling (2-second intervals) against the FastAPI backend
 
-## React Compiler
+## Getting Started
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+cd aegis_frontend
+npm install
+npm run dev    # serves at http://localhost:5173
+```
 
-## Expanding the ESLint configuration
+Requires the backend running at `http://localhost:8000` (see `aegis_backend/`).
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Pages
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/` | Dashboard | Overview with aggregate stats, agent list, recent activity feed, and pending approval alert banner |
+| `/agents` | Agents | Responsive grid of all registered agents showing status, action counts, and risk scores |
+| `/agents/:name` | Agent Detail | Individual agent profile with kill-switch toggle, policy/tools list, and live activity feed |
+| `/activity` | Activity | Full audit log with agent filter dropdown and real-time updates |
+| `/approvals` | Approvals | Human-in-the-loop review queue with approve/deny controls for each pending action |
+
+## Folder Structure
+
+```
+src/
+├── api.js                  # 8 API functions (stats, agents, logs, policies, toggle, approvals)
+├── App.jsx                 # BrowserRouter with 5 routes + Navbar layout
+├── index.css               # Tailwind v4 @theme with Robinhood color palette
+├── main.jsx                # Entry point
+├── components/
+│   ├── Navbar.jsx          # Top nav — active link underlines, approval count badge
+│   ├── AgentCard.jsx       # Card component for agents grid
+│   ├── AgentProfile.jsx    # Agent header with name, ID, status, kill-switch toggle
+│   ├── ApprovalCard.jsx    # Individual approval with action details + approve/deny buttons
+│   ├── LiveFeed.jsx        # Scrollable audit log feed with status color coding
+│   ├── StatsCards.jsx      # Dashboard stat cards (agents, actions, blocked, reviews, risk)
+│   └── ToolsList.jsx       # Agent policy display (allowed/blocked action lists)
+└── pages/
+    ├── DashboardPage.jsx   # Stats + two-column layout (agents left, activity right)
+    ├── AgentsPage.jsx      # Responsive grid (1/2/3 columns) of AgentCard components
+    ├── AgentDetailPage.jsx # Profile + tools (left 3/5) + sticky live feed (right 2/5)
+    ├── ActivityPage.jsx    # Full-height LiveFeed with agent filter dropdown
+    └── ApprovalsPage.jsx   # ApprovalCard list with empty state
+```
+
+## Design System
+
+Robinhood-inspired theme defined in `index.css`:
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--color-surface` | `#FFFFFF` | Page and card backgrounds |
+| `--color-surface-alt` | `#F7F7F8` | Alternating row backgrounds |
+| `--color-divider` | `#E3E5E8` | Borders and separators |
+| `--color-positive` | `#00C805` | Allowed actions, active status, success |
+| `--color-negative` | `#FF5000` | Blocked actions, paused status, errors |
+| `--color-caution` | `#FFAB00` | Pending approvals, review states |
+| `--color-ink` | `#1B1B1B` | Primary text |
+| `--color-ink-secondary` | `#6F7177` | Secondary text |
+| `--color-ink-faint` | `#9B9BA3` | Muted text, timestamps |
+| `--font-sans` | `Inter` | All typography |
+
+## API Functions
+
+All functions in `api.js` call the backend at `http://localhost:8000`:
+
+| Function | Endpoint | Used By |
+|----------|----------|---------|
+| `fetchStats()` | `GET /stats` | DashboardPage |
+| `fetchAgents()` | `GET /agents` | DashboardPage, AgentsPage, AgentDetailPage, ActivityPage, Navbar |
+| `fetchAgentLogs(name)` | `GET /agents/{name}/logs` | AgentDetailPage |
+| `fetchAgentPolicies(name)` | `GET /agents/{name}/policies` | AgentDetailPage |
+| `toggleAgent(name, status)` | `POST /agents/{name}/toggle` | AgentDetailPage |
+| `fetchAllLogs()` | `GET /logs` | DashboardPage, ActivityPage |
+| `fetchPendingApprovals()` | `GET /approvals/pending` | DashboardPage, ApprovalsPage, Navbar |
+| `decideApproval(id, decision)` | `POST /approvals/{id}/decide` | ApprovalsPage |
