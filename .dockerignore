@@ -1,0 +1,17 @@
+# Ignore files not needed in the Docker image
+.env
+.env.*
+*.db
+*.sqlite3
+__pycache__/
+*.pyc
+node_modules/
+aegis_frontend/
+aegis_demo/
+.git/
+.gitignore
+.gemini/
+*.log
+verify_output.txt
+render.yaml
+CLAUDE.md
