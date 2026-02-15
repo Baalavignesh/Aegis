@@ -1,6 +1,6 @@
 # Aegis Frontend — Governance Dashboard
 
-React SPA providing a real-time monitoring dashboard for the Aegis AI agent governance platform. Built with a Robinhood-inspired design language — clean white backgrounds, Inter font, green/red status colors, and minimal borders. The dashboard talks to the **Aegis backend API**, which reads from **MongoDB** (agents, policies, audit log, approvals).
+React SPA providing a real-time monitoring dashboard for the Aegis AI agent governance platform. Built with a Robinhood-inspired design language — clean white backgrounds, Inter font, green/red status colors, and minimal borders. The dashboard talks to the **Aegis backend API**, which is the single entry point to **MongoDB**.
 
 ## Tech Stack
 
@@ -8,33 +8,45 @@ React SPA providing a real-time monitoring dashboard for the Aegis AI agent gove
 - **Routing:** React Router v6
 - **Styling:** Tailwind CSS v4 with custom theme variables
 - **Icons:** Lucide React
-- **Data:** REST API polling (2-second intervals) against the FastAPI backend (MongoDB-backed)
+- **Data:** REST API polling (2-second intervals) against the FastAPI backend
 
 ## Getting Started
+
+### Local Development
 
 ```bash
 cd aegis_frontend
 npm install
+
+# Create .env with the backend URL
+echo "VITE_API_URL=http://localhost:8000" > .env
+
 npm run dev    # serves at http://localhost:5173
 ```
 
-Requires the backend running (default `http://localhost:8000`). The backend uses MongoDB; configure `MONGO_URI` and `MONGO_DB_NAME` in the backend environment (see `aegis_backend/`).
+Requires the backend running (default `http://localhost:8000`).
 
-### API base URL (MongoDB integration)
+### Production
 
-The frontend uses the backend API as the single source of truth; all dashboard data (agents, logs, approvals) comes from the backend, which reads from MongoDB. Set the API base URL via environment:
+The frontend is deployed on Vercel, pointing to the production backend:
+
+```bash
+VITE_API_URL=https://aegis-backend-eight.vercel.app
+```
+
+### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `VITE_API_URL` | `http://localhost:8000` | Backend API base URL (used at build time) |
 
-Create a `.env` file in `aegis_frontend/` to override, e.g.:
+Create a `.env` file in `aegis_frontend/` to override:
 
 ```bash
 VITE_API_URL=http://localhost:8000
 ```
 
-For a different host/port (e.g. deployed backend), set `VITE_API_URL` and run `npm run build` / `npm run dev` again.
+For production builds, set `VITE_API_URL` to the deployed backend URL and run `npm run build`.
 
 ## Pages
 
@@ -50,7 +62,7 @@ For a different host/port (e.g. deployed backend), set `VITE_API_URL` and run `n
 
 ```
 src/
-├── api.js                  # 8 API functions (stats, agents, logs, policies, toggle, approvals)
+├── api.js                  # API functions (stats, agents, logs, policies, toggle, approvals)
 ├── App.jsx                 # BrowserRouter with 5 routes + Navbar layout
 ├── index.css               # Tailwind v4 @theme with Robinhood color palette
 ├── main.jsx                # Entry point
@@ -89,7 +101,7 @@ Robinhood-inspired theme defined in `index.css`:
 
 ## API Functions
 
-All functions in `api.js` call the backend at `VITE_API_URL` (default `http://localhost:8000`). The backend serves data from MongoDB.
+All functions in `api.js` call the backend at `VITE_API_URL`. The backend serves data from MongoDB.
 
 | Function | Endpoint | Used By |
 |----------|----------|---------|
