@@ -17,7 +17,7 @@ from ..core import (
     connect_external_tool,
     delete_records_tool,
 )
-from ..data import seed_database, DB_PATH
+from ..data import seed_database
 
 DECORATOR = {
     "allowed_actions": ["check_credit_score", "process_application", "send_notification"],
@@ -28,8 +28,8 @@ DECORATOR = {
 
 
 def run():
-    if not os.path.exists(DB_PATH):
-        seed_database()
+    # Ensure database exists
+    # seed_database() # handled by run_demo.py
 
     agent = AegisAgent(
         name="Loan Processor",

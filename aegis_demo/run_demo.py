@@ -77,11 +77,11 @@ def print_summary():
 
 
 def clean_sentinel_db():
-    """Remove sentinel.db for a fresh run."""
+    """Drop all collections for a fresh run."""
     import sentinel.db as sdb
-    db_path = sdb.DB_PATH
-    if os.path.exists(db_path):
-        os.remove(db_path)
+    db = sdb.get_db()
+    for coll in ["agents", "policies", "audit_log", "pending_approvals", "counters"]:
+        db[coll].drop()
 
 
 def demo_kill_switch():

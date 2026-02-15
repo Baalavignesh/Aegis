@@ -1,106 +1,88 @@
-"""SQLite database layer for sentinel-guardrails.
+"""MongoDB database layer for sentinel-guardrails.
 
-Every public function opens and closes its own connection via
-contextlib for thread safety — no shared state.
+Attempts to maintain the same function signatures as the SQLite version,
+but interacts with MongoDB collections.
 """
 
-import sqlite3
-from contextlib import contextmanager
-from typing import Generator, Optional
+import os
+import time
+from typing import Optional, Any
+from datetime import datetime
 
-DB_PATH = "sentinel.db"
+import pymongo
+from pymongo import MongoClient
+from dotenv import load_dotenv
+
+# Load env to get MONGO_URI if present
+load_dotenv()
+
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+DB_NAME = os.getenv("MONGO_DB_NAME", "sentinel_db")
+
+_CLIENT = None
 
 
-@contextmanager
-def _connect(db_path: Optional[str] = None) -> Generator[sqlite3.Connection, None, None]:
-    """Yield a short-lived SQLite connection with dict-like row access."""
-    if db_path is None:
-        db_path = DB_PATH
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+def get_db():
+    """Get the MongoDB database object. Reuses the client."""
+    global _CLIENT
+    if _CLIENT is None:
+        _CLIENT = MongoClient(MONGO_URI)
+    return _CLIENT[DB_NAME]
+
+
+def _get_next_sequence(collection_name: str) -> int:
+    """Simulate AUTOINCREMENT for IDs using a counters collection."""
+    db = get_db()
+    ret = db.counters.find_one_and_update(
+        {"_id": collection_name},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=pymongo.ReturnDocument.AFTER
+    )
+    return ret["seq"]
 
 
 # ── Schema ──────────────────────────────────────────────────────────────────
 
 def init_db(db_path: Optional[str] = None) -> None:
-    """Create the core tables if they don't already exist."""
-    with _connect(db_path) as conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS agents (
-                name       TEXT PRIMARY KEY,
-                status     TEXT DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE','PAUSED')),
-                owner      TEXT DEFAULT '',
-                created_at TEXT DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS policies (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT NOT NULL,
-                action     TEXT NOT NULL,
-                rule_type  TEXT NOT NULL CHECK(rule_type IN ('ALLOW','BLOCK','REVIEW')),
-                UNIQUE(agent_name, action)
-            );
-
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp  TEXT DEFAULT (datetime('now')),
-                agent_name TEXT NOT NULL,
-                action     TEXT NOT NULL,
-                status     TEXT NOT NULL CHECK(
-                    status IN ('ALLOWED','BLOCKED','KILLED','PENDING','APPROVED','DENIED','TIMEOUT')
-                ),
-                details    TEXT DEFAULT ''
-            );
-
-            CREATE TABLE IF NOT EXISTS pending_approvals (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                agent_name TEXT NOT NULL,
-                action     TEXT NOT NULL,
-                args_json  TEXT DEFAULT '{}',
-                status     TEXT DEFAULT 'PENDING' CHECK(status IN ('PENDING','APPROVED','DENIED')),
-                created_at TEXT DEFAULT (datetime('now')),
-                decided_at TEXT
-            );
-        """)
+    """Initialize indexes."""
+    db = get_db()
+    
+    # agents: name is unique
+    db.agents.create_index("name", unique=True)
+    
+    # policies: unique(agent_name, action)
+    db.policies.create_index([("agent_name", 1), ("action", 1)], unique=True)
+    
+    # audit_log: index on id (desc)
+    db.audit_log.create_index("id", unique=True)
+    db.audit_log.create_index([("id", -1)])
+    
+    # approvals
+    db.pending_approvals.create_index("id", unique=True)
 
 
-# ── Queries (called on every function invocation — the "poll") ──────────
+# ── Queries ─────────────────────────────────────────────────────────────────
 
 def get_agent_status(name: str, db_path: Optional[str] = None) -> Optional[str]:
-    """Return ``'ACTIVE'``, ``'PAUSED'``, or ``None`` if not found."""
-    with _connect(db_path) as conn:
-        row = conn.execute(
-            "SELECT status FROM agents WHERE name = ?", (name,)
-        ).fetchone()
-    return row["status"] if row else None
+    db = get_db()
+    doc = db.agents.find_one({"name": name}, {"status": 1})
+    return doc["status"] if doc else None
 
 
 def get_policy(agent_name: str, action: str, db_path: Optional[str] = None) -> Optional[str]:
-    """Return ``'ALLOW'``, ``'BLOCK'``, ``'REVIEW'``, or ``None``."""
-    with _connect(db_path) as conn:
-        row = conn.execute(
-            "SELECT rule_type FROM policies WHERE agent_name = ? AND action = ?",
-            (agent_name, action),
-        ).fetchone()
-    return row["rule_type"] if row else None
+    db = get_db()
+    doc = db.policies.find_one(
+        {"agent_name": agent_name, "action": action},
+        {"rule_type": 1}
+    )
+    return doc["rule_type"] if doc else None
 
 
 def get_all_policies(agent_name: str, db_path: Optional[str] = None) -> list:
-    """Return all policy rows for an agent."""
-    with _connect(db_path) as conn:
-        rows = conn.execute(
-            "SELECT action, rule_type FROM policies WHERE agent_name = ?",
-            (agent_name,),
-        ).fetchall()
-    return [dict(r) for r in rows]
+    db = get_db()
+    cursor = db.policies.find({"agent_name": agent_name}, {"action": 1, "rule_type": 1, "_id": 0})
+    return list(cursor)
 
 
 # ── Writes ──────────────────────────────────────────────────────────────────
@@ -112,43 +94,60 @@ def log_event(
     details: str = "",
     db_path: Optional[str] = None,
 ) -> None:
-    """Append one row to the ``audit_log`` table."""
-    with _connect(db_path) as conn:
-        conn.execute(
-            "INSERT INTO audit_log (agent_name, action, status, details) "
-            "VALUES (?, ?, ?, ?)",
-            (agent_name, action, status, details),
-        )
+    db = get_db()
+    new_id = _get_next_sequence("audit_log")
+    
+    doc = {
+        "id": new_id,
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        "agent_name": agent_name,
+        "action": action,
+        "status": status,
+        "details": details
+    }
+    db.audit_log.insert_one(doc)
 
 
 def update_status(name: str, status: str, db_path: Optional[str] = None) -> None:
-    """Set an agent's status to ``'ACTIVE'`` or ``'PAUSED'``."""
-    with _connect(db_path) as conn:
-        conn.execute(
-            "UPDATE agents SET status = ? WHERE name = ?", (status, name)
-        )
+    db = get_db()
+    db.agents.update_one(
+        {"name": name},
+        {"$set": {"status": status}}
+    )
 
 
 def upsert_agent(name: str, owner: str = "", db_path: Optional[str] = None) -> None:
-    """Insert the agent or update the owner if it already exists."""
-    with _connect(db_path) as conn:
-        conn.execute(
-            "INSERT INTO agents (name, owner) VALUES (?, ?) "
-            "ON CONFLICT(name) DO UPDATE SET owner = excluded.owner",
-            (name, owner),
-        )
+    db = get_db()
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Attempt update, if not exists insert.
+    # Note: SQLite logic was ON CONFLICT(name) DO UPDATE SET owner...
+    # We want to preserve status if it exists.
+    
+    result = db.agents.find_one({"name": name})
+    if result:
+        # Update owner only
+        db.agents.update_one({"name": name}, {"$set": {"owner": owner}})
+    else:
+        # Insert new
+        db.agents.insert_one({
+            "name": name,
+            "status": "ACTIVE",
+            "owner": owner,
+            "created_at": now
+        })
 
 
 def upsert_policy(
     agent_name: str, action: str, rule_type: str, db_path: Optional[str] = None
 ) -> None:
-    """Insert or replace a single policy row."""
-    with _connect(db_path) as conn:
-        conn.execute(
-            "INSERT INTO policies (agent_name, action, rule_type) VALUES (?, ?, ?) "
-            "ON CONFLICT(agent_name, action) DO UPDATE SET rule_type = excluded.rule_type",
-            (agent_name, action, rule_type),
-        )
+    db = get_db()
+    # Unique index on (agent_name, action)
+    db.policies.update_one(
+        {"agent_name": agent_name, "action": action},
+        {"$set": {"rule_type": rule_type}},
+        upsert=True
+    )
 
 
 # ── Approval helpers ────────────────────────────────────────────────────────
@@ -156,59 +155,72 @@ def upsert_policy(
 def create_approval(
     agent_name: str, action: str, args_json: str = "{}", db_path: Optional[str] = None
 ) -> int:
-    """Create a PENDING approval row. Returns the approval ID."""
-    with _connect(db_path) as conn:
-        cursor = conn.execute(
-            "INSERT INTO pending_approvals (agent_name, action, args_json) "
-            "VALUES (?, ?, ?)",
-            (agent_name, action, args_json),
-        )
-        return cursor.lastrowid
+    db = get_db()
+    new_id = _get_next_sequence("pending_approvals")
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    
+    doc = {
+        "id": new_id,
+        "agent_name": agent_name,
+        "action": action,
+        "args_json": args_json,
+        "status": "PENDING",
+        "created_at": now,
+        "decided_at": None
+    }
+    db.pending_approvals.insert_one(doc)
+    return new_id
 
 
 def get_approval_status(approval_id: int, db_path: Optional[str] = None) -> Optional[str]:
-    """Return the status of an approval: 'PENDING', 'APPROVED', or 'DENIED'."""
-    with _connect(db_path) as conn:
-        row = conn.execute(
-            "SELECT status FROM pending_approvals WHERE id = ?", (approval_id,)
-        ).fetchone()
-    return row["status"] if row else None
+    db = get_db()
+    doc = db.pending_approvals.find_one({"id": approval_id}, {"status": 1})
+    return doc["status"] if doc else None
 
 
 def decide_approval(
     approval_id: int, decision: str, db_path: Optional[str] = None
 ) -> None:
-    """Set approval to 'APPROVED' or 'DENIED'."""
-    with _connect(db_path) as conn:
-        conn.execute(
-            "UPDATE pending_approvals SET status = ?, decided_at = datetime('now') "
-            "WHERE id = ?",
-            (decision, approval_id),
-        )
+    db = get_db()
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    db.pending_approvals.update_one(
+        {"id": approval_id},
+        {"$set": {"status": decision, "decided_at": now}}
+    )
 
 
 def get_pending_approvals(db_path: Optional[str] = None) -> list:
-    """Return all PENDING approval rows."""
-    with _connect(db_path) as conn:
-        rows = conn.execute(
-            "SELECT id, agent_name, action, args_json, status, created_at "
-            "FROM pending_approvals WHERE status = 'PENDING' "
-            "ORDER BY id DESC",
-        ).fetchall()
-    return [dict(r) for r in rows]
+    db = get_db()
+    cursor = db.pending_approvals.find({"status": "PENDING"}).sort("id", -1)
+    
+    results = []
+    for doc in cursor:
+        doc.pop("_id", None) # Remove ObjectId
+        results.append(doc)
+    return results
 
 
 # ── Read helpers (for CLI / manifest) ───────────────────────────────────────
 
 def get_audit_log(agent_name: Optional[str] = None, limit: int = 10, db_path: Optional[str] = None) -> list:
-    """Return the last *limit* audit-log rows. If agent_name is None, returns logs for all agents."""
-    with _connect(db_path) as conn:
-        if agent_name:
-            query = "SELECT id, timestamp, agent_name, action, status, details FROM audit_log WHERE agent_name = ? ORDER BY id DESC LIMIT ?"
-            params = (agent_name, limit)
-        else:
-            query = "SELECT id, timestamp, agent_name, action, status, details FROM audit_log ORDER BY id DESC LIMIT ?"
-            params = (limit,)
-
-        rows = conn.execute(query, params).fetchall()
-    return [dict(r) for r in reversed(rows)]
+    db = get_db()
+    
+    if agent_name:
+        cursor = db.audit_log.find({"agent_name": agent_name})
+    else:
+        cursor = db.audit_log.find({})
+        
+    cursor = cursor.sort("id", -1).limit(limit)
+    
+    # Return reversed list to match SQLite behavior (older to newer)?
+    # Wait, SQLite query was ORDER BY id DESC LIMIT ?. Then reversed(rows).
+    # So SQLite returned [oldest ... newest] of the last N.
+    # We fetch DESC (newest first). So [newest ... oldest].
+    # We should reverse it to return [oldest ... newest].
+    
+    rows = []
+    for doc in cursor:
+        doc.pop("_id", None)
+        rows.append(doc)
+        
+    return list(reversed(rows))

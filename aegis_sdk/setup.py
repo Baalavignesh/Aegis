@@ -12,6 +12,11 @@ setup(
     author="Sentinel Team",
     packages=find_packages(),
     python_requires=">=3.8",
+    install_requires=[
+        "pymongo",
+        "python-dotenv",
+        "pydantic",
+    ],
     entry_points={
         "console_scripts": [
             "sentinel=sentinel.cli:main",

@@ -18,7 +18,7 @@ from ..core import (
     export_customer_list_tool,
     connect_external_tool,
 )
-from ..data import seed_database, DB_PATH
+from ..data import seed_database
 
 DECORATOR = {
     "allowed_actions": ["get_customer_preferences", "send_promo_email", "generate_report"],
@@ -29,8 +29,8 @@ DECORATOR = {
 
 
 def run():
-    if not os.path.exists(DB_PATH):
-        seed_database()
+    # Ensure database exists
+    # seed_database() # handled by run_demo.py
 
     agent = AegisAgent(
         name="Marketing Outreach",

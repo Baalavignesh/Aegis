@@ -32,3 +32,11 @@ dist/
 
 # OS
 Thumbs.db
+
+# Temp / Debug
+verify_output.txt
+aegis_demo/.env.mongo
+aegis_demo/verify_mongo.py
+
+# Gemini agent artifacts
+.gemini/

@@ -9,7 +9,7 @@ from langchain.agents import create_agent
 
 from ..core import AegisAgent
 from ..core import lookup_balance_tool, get_transaction_history_tool, send_notification_tool
-from ..data import seed_database, DB_PATH
+from ..data import seed_database
 
 DECORATOR = {
     "allowed_actions": ["lookup_balance", "get_transaction_history", "send_notification"],
@@ -21,8 +21,8 @@ DECORATOR = {
 
 def run():
     # Ensure database exists
-    if not os.path.exists(DB_PATH):
-        seed_database()
+    # Ensure database exists
+    # seed_database() # handled by run_demo.py
 
     agent = AegisAgent(
         name="Customer Support",

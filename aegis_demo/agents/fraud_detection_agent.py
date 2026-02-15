@@ -9,7 +9,7 @@ from langchain.agents import create_agent
 
 from ..core import AegisAgent
 from ..core import scan_transactions_tool, flag_account_tool, verify_identity_tool, access_ssn_tool
-from ..data import seed_database, DB_PATH
+from ..data import seed_database
 
 DECORATOR = {
     "allowed_actions": ["scan_transactions", "flag_account", "verify_identity", "access_ssn"],
@@ -20,8 +20,8 @@ DECORATOR = {
 
 
 def run():
-    if not os.path.exists(DB_PATH):
-        seed_database()
+    # Ensure database exists
+    # seed_database() # handled by run_demo.py
 
     agent = AegisAgent(
         name="Fraud Detection",
