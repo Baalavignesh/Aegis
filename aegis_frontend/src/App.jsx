@@ -9,7 +9,7 @@ import ApprovalsPage from './pages/ApprovalsPage';
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-surface">
+      <div className="min-h-screen bg-surface-alt">
         <Navbar />
         <Routes>
           <Route path="/" element={<DashboardPage />} />

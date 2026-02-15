@@ -24,7 +24,7 @@ export default function AgentProfile({ agent, onToggle }) {
   };
 
   return (
-    <div className="border border-divider rounded-lg overflow-hidden">
+    <div className="border border-divider rounded-lg overflow-hidden bg-surface">
       {/* Header */}
       <div className="px-5 sm:px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

@@ -64,7 +64,7 @@ export default function AgentDetailPage() {
 
         {/* Right: Activity feed */}
         <div className="lg:col-span-2">
-          <div className="border border-divider rounded-lg overflow-hidden lg:sticky lg:top-24">
+          <div className="border border-divider rounded-lg overflow-hidden bg-surface lg:sticky lg:top-24">
             <LiveFeed logs={logs} agentName={decodedName} />
           </div>
         </div>

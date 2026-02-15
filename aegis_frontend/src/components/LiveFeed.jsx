@@ -1,13 +1,13 @@
 import { useEffect, useRef } from 'react';
 
 const statusStyles = {
-  ALLOWED: { dot: 'bg-positive', text: 'text-positive', label: 'Allowed' },
-  BLOCKED: { dot: 'bg-negative', text: 'text-negative', label: 'Blocked' },
-  KILLED: { dot: 'bg-negative', text: 'text-negative', label: 'Killed' },
-  PENDING: { dot: 'bg-caution', text: 'text-caution', label: 'Pending' },
-  APPROVED: { dot: 'bg-positive', text: 'text-positive', label: 'Approved' },
-  DENIED: { dot: 'bg-negative', text: 'text-negative', label: 'Denied' },
-  TIMEOUT: { dot: 'bg-negative', text: 'text-negative', label: 'Timeout' },
+  ALLOWED: { dot: 'bg-positive', text: 'text-positive', border: 'border-l-positive', label: 'Allowed' },
+  APPROVED: { dot: 'bg-positive', text: 'text-positive', border: 'border-l-positive', label: 'Approved' },
+  BLOCKED: { dot: 'bg-negative', text: 'text-negative', border: 'border-l-negative', label: 'Blocked' },
+  KILLED: { dot: 'bg-negative', text: 'text-negative', border: 'border-l-negative', label: 'Killed' },
+  DENIED: { dot: 'bg-negative', text: 'text-negative', border: 'border-l-negative', label: 'Denied' },
+  TIMEOUT: { dot: 'bg-negative', text: 'text-negative', border: 'border-l-negative', label: 'Timeout' },
+  PENDING: { dot: 'bg-caution', text: 'text-caution', border: 'border-l-caution', label: 'Pending' },
 };
 
 export default function LiveFeed({ logs, agentName, fullHeight = false }) {
@@ -23,7 +23,7 @@ export default function LiveFeed({ logs, agentName, fullHeight = false }) {
       <div className="px-5 py-4 border-b border-divider flex items-center justify-between">
         <h3 className="text-base font-bold text-ink">Activity</h3>
         <div className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-positive" />
+          <span className="w-1.5 h-1.5 rounded-full bg-accent" />
           <span className="text-xs text-ink-faint">Live</span>
         </div>
       </div>
@@ -45,7 +45,7 @@ export default function LiveFeed({ logs, agentName, fullHeight = false }) {
           return (
             <div
               key={entry.id}
-              className="px-5 py-3 border-b border-divider hover:bg-surface-hover transition-colors"
+              className={`pl-5 pr-5 py-3 border-b border-divider border-l-[3px] hover:bg-surface-hover transition-colors ${style.border}`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5 min-w-0">

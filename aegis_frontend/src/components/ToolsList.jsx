@@ -5,7 +5,7 @@ export default function ToolsList({ policies }) {
   const total = allowed.length + blocked.length + requires_review.length;
 
   return (
-    <div className="border border-divider rounded-lg overflow-hidden">
+    <div className="border border-divider rounded-lg overflow-hidden bg-surface">
       <div className="px-5 sm:px-6 py-4 border-b border-divider">
         <h3 className="text-base font-bold text-ink">Tool Policies</h3>
         <p className="text-xs text-ink-faint mt-0.5">{total} tools configured</p>

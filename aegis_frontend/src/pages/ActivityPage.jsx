@@ -45,7 +45,7 @@ export default function ActivityPage() {
         </select>
       </div>
 
-      <div className="border border-divider rounded-lg overflow-hidden">
+      <div className="border border-divider rounded-lg overflow-hidden bg-surface">
         <LiveFeed logs={logs} agentName={filterAgent || null} fullHeight />
       </div>
     </div>

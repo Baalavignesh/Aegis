@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchStats, fetchAgents, fetchAllLogs, fetchPendingApprovals } from '../api';
-import StatsCards from '../components/StatsCards';
+import DashboardStatCards from '../components/DashboardStatCards';
 import { ArrowRight, AlertTriangle } from 'lucide-react';
 
 const statusLabel = {
@@ -49,8 +49,8 @@ export default function DashboardPage() {
         </Link>
       )}
 
-      {/* Stats */}
-      <StatsCards stats={stats} />
+      {/* Dark stat cards */}
+      <DashboardStatCards stats={stats} />
 
       {/* Two columns: agents + activity */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 sm:gap-8">
@@ -58,34 +58,37 @@ export default function DashboardPage() {
         <div className="lg:col-span-3">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-ink">Agents</h2>
-            <Link to="/agents" className="text-sm text-positive font-medium hover:underline">
+            <Link to="/agents" className="text-sm text-accent font-medium hover:underline">
               View all
             </Link>
           </div>
-          <div className="border border-divider rounded-lg divide-y divide-divider overflow-hidden">
-            {agents.map((agent) => (
-              <Link
-                key={agent.name}
-                to={`/agents/${encodeURIComponent(agent.name)}`}
-                className="flex items-center justify-between px-4 sm:px-5 py-4 hover:bg-surface-hover transition-colors"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-ink truncate">{agent.name}</span>
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${
-                      agent.status === 'PAUSED' ? 'bg-negative' : 'bg-positive'
-                    }`} />
+          <div className="rounded-lg border border-divider bg-surface overflow-hidden divide-y divide-divider">
+            {agents.map((agent) => {
+              const isPaused = agent.status === 'PAUSED';
+              return (
+                <Link
+                  key={agent.name}
+                  to={`/agents/${encodeURIComponent(agent.name)}`}
+                  className="flex items-center justify-between px-5 py-4 hover:bg-surface-hover transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-ink truncate">{agent.name}</span>
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${
+                        isPaused ? 'bg-negative' : 'bg-positive'
+                      }`} />
+                    </div>
+                    <p className="text-xs text-ink-faint mt-0.5">{agent.owner}</p>
                   </div>
-                  <p className="text-xs text-ink-faint mt-0.5">{agent.owner}</p>
-                </div>
-                <div className="text-right shrink-0 ml-4">
-                  <p className="text-sm font-semibold text-ink">{agent.total_logs} actions</p>
-                  <p className={`text-xs ${agent.risk_score > 20 ? 'text-negative' : 'text-positive'}`}>
-                    {agent.risk_score}% risk
-                  </p>
-                </div>
-              </Link>
-            ))}
+                  <div className="text-right shrink-0 ml-4">
+                    <p className="text-sm font-semibold text-ink tabular-nums">{agent.total_logs} actions</p>
+                    <p className="text-xs text-ink-faint tabular-nums">
+                      {agent.risk_score}% risk
+                    </p>
+                  </div>
+                </Link>
+              );
+            })}
             {agents.length === 0 && (
               <div className="px-5 py-8 text-center">
                 <p className="text-sm text-ink-faint">No agents registered yet</p>
@@ -98,11 +101,11 @@ export default function DashboardPage() {
         <div className="lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-ink">Recent activity</h2>
-            <Link to="/activity" className="text-sm text-positive font-medium hover:underline">
+            <Link to="/activity" className="text-sm text-accent font-medium hover:underline">
               View all
             </Link>
           </div>
-          <div className="border border-divider rounded-lg divide-y divide-divider overflow-hidden">
+          <div className="rounded-lg border border-divider bg-surface overflow-hidden divide-y divide-divider">
             {logs.map((entry) => {
               const isPositive = entry.status === 'ALLOWED' || entry.status === 'APPROVED';
               const isPending = entry.status === 'PENDING';
