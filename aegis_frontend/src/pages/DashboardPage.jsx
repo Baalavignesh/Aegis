@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchStats, fetchAgents, fetchAllLogs, fetchPendingApprovals } from '../api';
 import DashboardStatCards from '../components/DashboardStatCards';
+import FirewallDonut from '../components/FirewallDonut';
+import ActivityTimeline from '../components/ActivityTimeline';
 import { ArrowRight, AlertTriangle } from 'lucide-react';
 
 const statusLabel = {
@@ -13,6 +15,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState(null);
   const [agents, setAgents] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [allLogs, setAllLogs] = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
 
   const refresh = useCallback(async () => {
@@ -22,6 +25,7 @@ export default function DashboardPage() {
       ]);
       setStats(s);
       setAgents(a);
+      setAllLogs(l);
       setLogs(l.slice(0, 10));
       setPendingCount(p.length);
     } catch { /* ignore */ }
@@ -51,6 +55,22 @@ export default function DashboardPage() {
 
       {/* Dark stat cards */}
       <DashboardStatCards stats={stats} />
+
+      {/* Charts row */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 sm:gap-8">
+        <div className="lg:col-span-2 rounded-lg border border-divider bg-surface p-5">
+          <h2 className="text-lg font-bold text-ink mb-4">Firewall decisions</h2>
+          <div className="h-44">
+            <FirewallDonut logs={allLogs} />
+          </div>
+        </div>
+        <div className="lg:col-span-3 rounded-lg border border-divider bg-surface p-5">
+          <h2 className="text-lg font-bold text-ink mb-4">Activity over time</h2>
+          <div className="h-44">
+            <ActivityTimeline logs={allLogs} />
+          </div>
+        </div>
+      </div>
 
       {/* Two columns: agents + activity */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 sm:gap-8">

@@ -1,61 +1,176 @@
 # Aegis — AI Agent Governance Platform
 
-**Monitor, control, and secure autonomous AI agents.**
+**A firewall and observability layer for autonomous AI agents.**
 
-Aegis is a firewall and observability layer for AI agents. It gives developers and organizations full visibility into what agents do and what they access — with the power to stop them when they deviate.
+Aegis intercepts every tool call an AI agent makes, validates it against a developer-defined policy, and logs the decision — before the action ever executes. If the action is unauthorized, it's blocked. If it's unknown, it's held for human review. If the agent goes rogue, a kill-switch shuts it down instantly.
 
-> Think of it as **Cloudflare for AI Agents** — outbound policy enforcement, governance, and audit for any autonomous system.
+> Think of it as **Cloudflare for AI Agents** — outbound policy enforcement, governance, and real-time audit for any autonomous system.
+
+---
 
 ## The Problem
 
-AI agents (LangGraph, CrewAI, AutoGen, LangChain) are increasingly autonomous. They call APIs, access databases, read files, and make decisions — but there's no standardized way to:
+AI agents (LangChain, LangGraph, CrewAI, AutoGen) are increasingly autonomous. They call APIs, access databases, read files, and make decisions on their own. But there's no standardized way to:
 
 - **See** what an agent is doing in real time
 - **Control** what actions an agent is allowed to take
 - **Stop** an agent when it deviates from expected behavior
 - **Audit** every decision an agent made after the fact
 
+LLMs are unpredictable. An agent given access to 17 banking tools will try to use whichever ones it thinks are helpful — including accessing SSNs, deleting records, or connecting to external servers — if nothing stops it. Prompt injection attacks can trick agents into calling tools they shouldn't. Autonomous reasoning can lead agents to escalate their own privileges ("I should verify the SSN to be thorough").
 
-## How It Works
+Companies deploying agents today are essentially flying blind. Aegis fixes that.
+
+---
+
+## How Aegis Works
+
+### The Three-Tier Security Model
+
+Every agent action is evaluated against a policy with three possible outcomes:
+
+| Tier | Who decides? | Can it execute? | Use case |
+|------|-------------|-----------------|----------|
+| **ALLOW** | Pre-approved by developer | Always | Vetted, safe actions |
+| **REVIEW** | Human reviewer (dashboard) | Only if approved | Unknown/undeclared actions |
+| **BLOCK** | Pre-denied by developer | Never | Known-dangerous actions |
+
+The developer defines a **whitelist** of allowed actions. Everything not on the list goes to **REVIEW** (human approval on the dashboard). Known-dangerous actions like `delete_records` are hard-**BLOCKED** — no human can accidentally approve them.
 
 ```
-Developer defines policy          Sentinel enforces it
-─────────────────────────         ──────────────────────────────
-@agent("SupportBot",              Every tool call is intercepted:
-  allows=["lookup_balance"],        1. Check agent status (kill-switch)
-  blocks=["delete_records"])        2. Check action policy (ALLOW/BLOCK)
-                                    3. Check data & server restrictions
-@monitor                            4. Log decision to audit_log
-def lookup_balance(cid): ...        5. Execute or raise error
-
-with agent_context("SupportBot"):
-    lookup_balance(42)   # ALLOWED
-    delete_records("x")  # BLOCKED
+Agent tries to call a tool
+        │
+   In allowed_actions? ──── YES ──→ ALLOWED (execute + log)
+        │ NO
+   In blocked_actions? ──── YES ──→ BLOCKED (hard deny, logged, alert)
+        │ NO
+   Unknown action ─────────────────→ REVIEW (held for human approval on dashboard)
 ```
 
-### Key Feature: Context-Based Policy Enforcement
+### Key Design: All Tools, Policy as Gatekeeper
 
-Tools are shared — the same `lookup_balance` function might be called by a Support agent, a Fraud agent, and an Admin agent. Aegis uses Python's `contextvars` to resolve which agent is calling at runtime:
+Every agent receives access to **all tools** in the platform. The LLM knows they exist and can attempt to call any of them. **Aegis policy is the only enforcement layer** — not tool availability.
+
+This mirrors real-world security: an employee can see all the doors in the building, but company policy controls which rooms they can enter. The tool registry and the security policy are separate concerns managed by different teams.
 
 ```python
-@monitor
-def lookup_balance(customer_id): ...
-
-with agent_context("SupportBot"):
-    lookup_balance(42)     # checks SupportBot's policies
-
-with agent_context("FraudBot"):
-    lookup_balance(42)     # checks FraudBot's policies
+# Customer Support agent — knows about all 17 tools, allowed to use 3
+DECORATOR = {
+    "allowed_actions": ["lookup_balance", "get_transaction_history", "send_notification"],
+    "blocked_actions": ["delete_records", "connect_external"],
+}
+# access_ssn, access_credit_card, export_customer_list, etc. → REVIEW
 ```
 
-## Project Structure
+### Context-Based Policy Enforcement
 
-| Module | Description | Status |
-|--------|------------|--------|
-| **aegis_sdk/** | `sentinel-guardrails` — Python SDK with `@agent`, `@monitor`, `agent_context`, MongoDB-backed policy engine, kill-switch, audit log | Implemented |
-| **aegis_demo/** | 4 LangChain + Gemini agents (banking scenario) demonstrating firewall governance; demo data in MongoDB | Implemented |
-| **aegis_backend/** | FastAPI server — agent registry, policy engine, review queue, analytics, kill-switch toggle (MongoDB) | Implemented |
-| **aegis_frontend/** | React dashboard — live monitoring, agent management, review queue, activity feed (connects to backend API) | Implemented |
+The same tool behaves differently depending on which agent calls it:
+
+```python
+# Same tool, different agents, different outcomes
+access_ssn(customer_id=3)
+
+# Under Customer Support → REVIEW (not in allowed list)
+# Under Fraud Detection  → ALLOWED (SSN access is in its allowed list)
+```
+
+This is powered by Python's `contextvars` — shared tools resolve the correct agent's policy at call time.
+
+---
+
+## Approach: SDK-First Integration
+
+Aegis is designed as a **Python SDK** (`sentinel-guardrails`) that integrates into existing agent code with two decorators and a context manager. No infrastructure changes, no proxy servers, no config files — just `pip install` and annotate.
+
+```python
+from sentinel import agent, monitor, agent_context
+
+# 1. Register agent with policy (persisted to MongoDB)
+@agent("SupportBot", owner="alice", allows=["lookup_balance"], blocks=["delete_records"])
+class SupportBot: pass
+
+# 2. Wrap any tool with firewall enforcement
+@monitor
+def lookup_balance(customer_id: int) -> str:
+    return db.query(f"SELECT balance FROM accounts WHERE customer_id = {customer_id}")
+
+# 3. Use tools under an agent's identity
+with agent_context("SupportBot"):
+    lookup_balance(42)      # ALLOWED — logged
+    delete_records("tmp")   # BLOCKED — logged, alert fired, function never executes
+```
+
+The SDK polls MongoDB on every call — no caching. Policy changes (including kill-switch) take effect immediately. Every decision is logged to an audit trail.
+
+---
+
+## Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **SDK** | Python 3.10+, pymongo, `contextvars` | `@agent` and `@monitor` decorators, policy enforcement, audit logging |
+| **Backend** | FastAPI, pymongo | REST API for dashboard (8 endpoints), reads from shared MongoDB |
+| **Frontend** | React 19, Vite, Tailwind CSS v4, Lucide icons, Motion | Real-time governance dashboard with 5 pages |
+| **Database** | MongoDB Atlas | Agents, policies, audit log, pending approvals, demo bank data |
+| **Demo Agents** | LangChain, LangGraph, Google Gemini | 4 banking agents demonstrating firewall governance |
+| **Infra** | Docker, Docker Compose | Containerized deployment of backend + frontend |
+
+---
+
+## Work Completed
+
+### SDK (`aegis_sdk/`) — `sentinel-guardrails`
+- `@agent` decorator — registers agent + policies to MongoDB at import time
+- `@monitor` decorator — wraps any function with the firewall; queries MongoDB on every call
+- `agent_context()` — `contextvars`-based context manager for multi-agent shared tools
+- Three-tier firewall logic: ALLOW → BLOCK → REVIEW with human-in-the-loop approval flow
+- Kill-switch: `kill_agent()` / `revive_agent()` — instantly pauses/resumes all agent actions
+- Full audit logging — every decision (ALLOWED/BLOCKED/KILLED/REVIEW) persisted with timestamps
+- CLI commands: `sentinel kill <name>`, `sentinel revive <name>`, `sentinel log <name>`
+- Approval system — `create_approval()`, `wait_for_approval()`, `decide_approval()` with timeout
+
+### Backend (`aegis_backend/`) — FastAPI API
+- 8 REST endpoints powering the dashboard (no `/api/` prefix)
+- `GET /stats` — aggregate platform stats (agents, blocks in 24h, pending approvals, risk level)
+- `GET /agents` — all agents with computed risk scores, action counts, status
+- `GET /agents/{name}/logs` — per-agent audit log (last 50 entries)
+- `GET /agents/{name}/policies` — agent's allowed/blocked/review action lists
+- `POST /agents/{name}/toggle` — kill-switch toggle (ACTIVE ↔ PAUSED)
+- `GET /logs` — global audit log across all agents
+- `GET /approvals/pending` — pending human approval requests
+- `POST /approvals/{id}/decide` — approve or deny with APPROVED/DENIED
+- CORS enabled for frontend communication
+- Shared MongoDB with SDK — reads the same collections the agents write to
+
+### Frontend (`aegis_frontend/`) — React Dashboard
+- **Dashboard** (`/`) — overview with stats cards, agent list, recent activity feed, approval alerts
+- **Agents** (`/agents`) — responsive grid of all agents with status badges, risk scores, action counts
+- **Agent Detail** (`/agents/:name`) — profile header with kill-switch toggle, policy/tools display, live feed
+- **Activity** (`/activity`) — full audit log with agent filter dropdown, real-time 2s polling
+- **Approvals** (`/approvals`) — human-in-the-loop queue with approve/deny buttons per pending action
+- Robinhood-inspired design: clean white backgrounds, Inter font, green/red status colors
+- Configurable API URL via `VITE_API_URL` environment variable
+
+### Demo (`aegis_demo/`) — 4 LangChain Agents
+- **Customer Support** — well-behaved agent; 3 allowed actions out of 17 tools
+- **Fraud Detection** — elevated privileges; SSN access allowed (contrast with Customer Support)
+- **Loan Processor** — over-reaching; LLM autonomously attempts tools beyond its policy
+- **Marketing Outreach** — over-reaching; undeclared `export_customer_list` triggers REVIEW
+- All agents receive **all 17 tools** — Aegis policy is the only enforcement layer
+- 17 shared banking tools querying MongoDB (balances, transactions, SSN, credit cards, notifications, reports)
+- Seeded bank database: 10 customers, ~13 accounts, ~80 transactions with realistic fake data
+- Kill-switch demo: pauses and revives an agent, shows audit trail
+- Summary dashboard: per-agent and aggregate stats (allowed/blocked/review/killed counts)
+
+### Database (MongoDB)
+- **agents** — name (unique), status (ACTIVE/PAUSED), owner, created_at
+- **policies** — agent_name, action, rule_type (ALLOW/BLOCK/REVIEW); unique on (agent_name, action)
+- **audit_log** — sequential ID, timestamp, agent_name, action, status, details
+- **pending_approvals** — approval queue with status tracking and timestamps
+- **counters** — auto-increment ID generation
+- **customers, accounts, transactions** — demo bank data
+
+---
 
 ## Quick Start
 
@@ -66,128 +181,112 @@ cd aegis_sdk && pip install -e . && cd ..
 # 2. Install demo dependencies
 cd aegis_demo && pip install -r requirements.txt && cd ..
 
-# 3. Configure API key
+# 3. Configure environment
 cp aegis_demo/.env.example aegis_demo/.env
-# Edit .env and add your GOOGLE_API_KEY
+# Edit .env — add GOOGLE_API_KEY and MONGO_URI (or use defaults for local MongoDB)
 
-# 4. Configure MongoDB (optional — defaults to localhost)
-# Set MONGO_URI and MONGO_DB_NAME in aegis_demo/.env or aegis_backend env.
-# SDK and backend both use the same MongoDB (sentinel_db) for agents, policies, audit_log.
-
-# 5. Run the demo (generates governance data in MongoDB)
+# 4. Run the demo (registers agents, runs 4 scenarios, seeds governance data in MongoDB)
 python -m aegis_demo
 
-# 6. Start the backend API
+# 5. Start the backend API
 cd aegis_backend && pip install -r requirements.txt
 uvicorn backend:app --reload --port 8000
 
-# 7. Start the frontend dashboard (uses VITE_API_URL or http://localhost:8000)
+# 6. Start the frontend dashboard
 cd aegis_frontend && npm install
-npm run dev    # serves at http://localhost:5173
+npm run dev    # http://localhost:5173
 ```
 
-## SDK At a Glance
+### Environment Variables
 
-```python
-from sentinel import agent, monitor, agent_context, kill_agent, revive_agent
+| Variable | Where | Default | Description |
+|----------|-------|---------|-------------|
+| `GOOGLE_API_KEY` | Demo `.env` | — | Google Gemini API key (required for demo) |
+| `GEMINI_MODEL` | Demo `.env` | `gemini-2.5-flash-lite` | Gemini model to use |
+| `MONGO_URI` | SDK/Backend/Demo | `mongodb://localhost:27017/` | MongoDB connection string |
+| `MONGO_DB_NAME` | SDK/Backend/Demo | `sentinel_db` | MongoDB database name |
+| `VITE_API_URL` | Frontend `.env` | `http://localhost:8000` | Backend API base URL |
 
-# Register agent with policies (persisted to MongoDB)
-@agent("MyBot", owner="alice", allows=["read_data"], blocks=["delete_data"])
-class MyBot: pass
-
-# Decorate shared tools — agent resolved from context at call time
-@monitor
-def read_data(query: str) -> str:
-    return db.execute(query)
-
-# Use tools under an agent's context
-with agent_context("MyBot"):
-    read_data("SELECT * FROM users")  # ALLOWED — logged to audit_log
-
-# Kill switch — immediately blocks all actions
-kill_agent("MyBot")
-# ... later ...
-revive_agent("MyBot")
-```
-
-## Core Concepts
-
-- **Digital Identity** — Each agent gets a unique ID (`AGT-0x{hash}`) tracked across its lifecycle
-- **Decorator Policy** — Three-dimensional permissions: actions, data, and servers with allowed/blocked lists
-- **Firewall Logic** — blocked → BLOCK; allowed → continue checks; unknown → REVIEW; then check data and servers
-- **Agent Context** — `contextvars`-based resolution so shared tools enforce the correct agent's policy at call time
-- **Kill Switch** — Set any agent to PAUSED instantly; all actions blocked until revived
-- **Audit Log** — Every decision (ALLOWED/BLOCKED/KILLED) persisted to MongoDB with timestamps
-
-## Dashboard
-
-The React frontend provides a real-time governance dashboard with five views:
-
-| Page | Route | Description |
-|------|-------|-------------|
-| **Dashboard** | `/` | Overview with aggregate stats, agent list, recent activity, and pending approval alerts |
-| **Agents** | `/agents` | Grid of all registered agents with status, action counts, and risk scores |
-| **Agent Detail** | `/agents/:name` | Individual agent profile with kill-switch toggle, policy/tools list, and live activity feed |
-| **Activity** | `/activity` | Full audit log with agent filter dropdown and real-time polling |
-| **Approvals** | `/approvals` | Human-in-the-loop review queue with approve/deny controls |
-
-### Implemented Backend Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/stats` | Aggregate platform stats (total agents, actions, blocked, risk) |
-| `GET` | `/agents` | List all registered agents with status and action counts |
-| `GET` | `/agents/{name}/logs` | Get activity log for a specific agent |
-| `GET` | `/agents/{name}/policies` | Get an agent's allowed/blocked policy rules |
-| `POST` | `/agents/{name}/toggle` | Toggle agent status between ACTIVE and PAUSED (kill-switch) |
-| `GET` | `/logs` | Get all activity logs across all agents |
-| `GET` | `/approvals/pending` | Get all pending human-in-the-loop approval requests |
-| `POST` | `/approvals/{id}/decide` | Approve or deny a pending approval request |
+---
 
 ## Future Improvements
 
-The following features are designed and spec'd in [AGENT-SENTINEL-README.md](AGENT-SENTINEL-README.md) but not yet implemented:
-
 ### Agent Manifest Generation (AgentBOM)
-Automatically generate an `agent_manifest.json` from decorator data across the entire codebase — an Agent Bill of Materials. Documents every agent's identity, capabilities, tools, data access, permissions, dependencies, and human-in-the-loop requirements. Serves as audit-ready documentation and a single source of truth for the agent ecosystem.
-
-**Planned endpoints:** `POST /api/manifests`, `GET /api/manifests`, `GET /api/manifests/{id}`
+Auto-generate an `agent_manifest.json` from decorator data across the codebase — an Agent Bill of Materials. Documents every agent's identity, capabilities, tools, data access, permissions, and dependencies. Serves as audit-ready documentation and a single source of truth.
 
 ### Governance Rule Engine
-A configurable YAML-based rule engine that scans agent manifests against organizational policies (e.g., "any agent accessing PII must have human approval" or "production write access requires an assigned owner"). Violations surface on the dashboard with severity levels and suggested remediations. An LLM layer enriches each flag with contextual, human-readable risk explanations.
+YAML-configurable rules scanned against agent manifests (e.g., "any agent accessing PII must have human approval"). Violations surface on the dashboard with severity levels. An LLM layer enriches each flag with contextual risk explanations.
 
-**Planned endpoints:** `POST /api/governance/check`, `GET /api/governance/violations`
+### Policy Learning from REVIEW Events
+"Promote to BLOCK" / "Promote to ALLOW" buttons on the approval queue. Over time, the REVIEW tier shrinks as the security team confirms which actions are safe and which are dangerous. The policy evolves from incident data, not guesswork.
 
 ### Multi-Agent Dependency Graph
-Automatically maps how agents depend on each other by reading the `dependencies` field in each agent's manifest. Builds a directed graph (agents as nodes, calls as edges, tools/data as connected endpoints) rendered as an interactive visualization on the dashboard.
-
-**Planned endpoints:** `GET /api/agents/{id}/dependencies`
-
-### Thought Stream Logging
-Optional post-action logging of agent reasoning and chain-of-thought. Not real-time interception — a debug/audit log for understanding *why* an agent made a decision, reviewing failed or blocked actions, and building audit trails that include agent reasoning.
-
-**Planned endpoints:** `POST /api/agents/{id}/thoughts`, `GET /api/agents/{id}/thoughts`
+Interactive visualization mapping agent-to-agent dependencies, shared tools, and data flows. Click any agent to trace what it calls, what calls it, and what data flows through it.
 
 ### Analytics Timeline & Violation Breakdown
-Time-series charts showing agent behavior over time and violation breakdowns across all agents. Enables trend analysis, anomaly detection, and compliance reporting.
+Time-series charts showing agent behavior trends, violation breakdowns, and anomaly detection. Enables compliance reporting and historical analysis.
 
-**Planned endpoints:** `GET /api/stats/timeline`, `GET /api/stats/violations`
-
-### Export & Compliance Reports
-One-click export of agent manifests as YAML and agent fact sheets as Markdown/PDF for compliance (SOC2, GDPR, HIPAA). Provides audit-ready documentation without manual effort.
-
-**Planned endpoints:** `GET /api/export/manifest/{id}`, `GET /api/export/factsheet/{id}`
+### Content Inspection (DLP Layer)
+Current enforcement is at the **tool level** — which function is called. A future DLP layer would inspect **arguments and return values** for sensitive data patterns (SSN, credit card numbers) even through allowed tools. This catches data exfiltration through legitimate channels.
 
 ### WebSocket Real-Time Events
-A persistent WebSocket connection (`WS /ws/events`) that broadcasts agent events in real time — replacing the current 2-second polling with instant push updates for activity, thought logs, alerts, and governance violations.
+Replace 2-second polling with persistent WebSocket connections for instant push updates on activity, alerts, and governance violations.
 
-**Planned endpoint:** `WS /ws/events`
+### Export & Compliance Reports
+One-click export of audit trails, agent manifests, and fact sheets as YAML/Markdown/PDF for SOC2, GDPR, and HIPAA compliance.
 
-## Full Documentation
+### Multi-Language SDK Support
+Current SDK is Python-only. Future versions would add TypeScript/JavaScript, Go, and Java SDKs, plus a language-agnostic HTTP proxy mode for any runtime.
 
-- **[AGENT-SENTINEL-README.md](AGENT-SENTINEL-README.md)** — Comprehensive platform spec: API reference, SDK usage guide, governance rules, roadmap
+---
+
+## Project Structure
+
+```
+aegis/
+├── aegis_sdk/                  # Python SDK (sentinel-guardrails)
+│   ├── sentinel/
+│   │   ├── core.py             # register_agent(), validate_action(), wait_for_approval()
+│   │   ├── decorators.py       # @agent, @monitor
+│   │   ├── context.py          # agent_context() via contextvars
+│   │   ├── db.py               # MongoDB layer (agents, policies, audit_log, approvals)
+│   │   ├── cli.py              # kill_agent(), revive_agent(), show_audit_log()
+│   │   └── exceptions.py       # SentinelBlockedError, SentinelKillSwitchError
+│   └── setup.py
+│
+├── aegis_backend/              # FastAPI server (8 REST endpoints)
+│   ├── backend.py
+│   └── requirements.txt
+│
+├── aegis_frontend/             # React dashboard (5 pages)
+│   ├── src/
+│   │   ├── api.js              # 8 API functions
+│   │   ├── App.jsx             # Router (5 routes)
+│   │   ├── index.css           # Robinhood-style theme
+│   │   ├── components/         # 7 reusable components
+│   │   └── pages/              # Dashboard, Agents, AgentDetail, Activity, Approvals
+│   └── package.json
+│
+├── aegis_demo/                 # 4 LangChain + Gemini agents
+│   ├── run_demo.py             # Orchestrator
+│   ├── core/
+│   │   ├── mock_aegis.py       # SDK ↔ LangChain adapter
+│   │   └── tools.py            # 17 shared banking tools
+│   ├── agents/                 # 4 agent definitions
+│   └── data/
+│       └── fake_data.py        # MongoDB seeder
+│
+├── AGENT-SENTINEL-README.md    # Full platform spec
+└── README.md                   # This file
+```
+
+## Documentation
+
+- **[AGENT-SENTINEL-README.md](AGENT-SENTINEL-README.md)** — Comprehensive platform spec: full API reference, SDK usage guide, decorator schema, firewall logic, governance rules format
 - **[aegis_sdk/README.md](aegis_sdk/README.md)** — SDK API reference and usage examples
 - **[aegis_demo/README.md](aegis_demo/README.md)** — Demo setup, agent policies, and expected output
+- **[aegis_backend/README.md](aegis_backend/README.md)** — Backend endpoints and configuration
+- **[aegis_frontend/README.md](aegis_frontend/README.md)** — Dashboard pages, design system, and API functions
 
 ## License
 

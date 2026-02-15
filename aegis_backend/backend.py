@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from sentinel.db import get_db
+from demo_router import demo_router
 
 # ── App Setup ───────────────────────────────────────────────────────────────
 
@@ -29,6 +30,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(demo_router, prefix="/demo")
 
 
 # ── Pydantic Models ─────────────────────────────────────────────────────────
