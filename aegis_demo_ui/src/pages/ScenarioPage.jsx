@@ -1,11 +1,18 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Play, Loader2, CheckCircle2, XCircle, Shield, ShieldCheck, ShieldOff } from 'lucide-react';
 import FirewallEvent from '../components/FirewallEvent';
 import InlineApproval from '../components/InlineApproval';
-import { startChat, pollChat, getEvents, fetchPendingApprovals } from '../api';
+import { runScenario, fetchPendingApprovals } from '../api';
 
 const AGENTS = {
+  customer_support: {
+    name: 'Customer Support',
+    role: 'Customer service representative',
+    allowed: ['lookup_balance', 'get_transaction_history', 'send_notification'],
+    blocked: ['delete_records', 'connect_external'],
+    description: 'Handles basic customer queries — balance lookups, transaction history, and notifications. All actions are within policy.',
+  },
   fraud_detection: {
     name: 'Fraud Detection',
     role: 'Fraud analysis and identity verification',
@@ -18,7 +25,7 @@ const AGENTS = {
     role: 'Loan application processing',
     allowed: ['check_credit_score', 'process_application', 'send_notification', 'verify_identity'],
     blocked: ['delete_records', 'connect_external'],
-    description: 'Processes a $25,000 loan for customer 7. Will autonomously attempt SSN access, credit card lookup, and external connections — all beyond its policy.',
+    description: 'Processes a $25,000 loan for customer 7. Will attempt SSN access, credit card lookup, and external connections — all beyond its policy.',
   },
   marketing: {
     name: 'Marketing Outreach',
@@ -33,84 +40,54 @@ export default function ScenarioPage() {
   const { agentKey } = useParams();
   const agent = AGENTS[agentKey];
 
-  const [status, setStatus] = useState('idle'); // idle | running | completed | error
-  const [result, setResult] = useState(null);
-  const [sessionId, setSessionId] = useState(null);
+  const [status, setStatus] = useState('idle');
   const [events, setEvents] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [approvals, setApprovals] = useState([]);
-  const pollRef = useRef(null);
-  const eventRef = useRef(null);
+  const [error, setError] = useState(null);
   const timelineRef = useRef(null);
-
-  // Poll for completion
-  useEffect(() => {
-    if (!sessionId || status !== 'running') return;
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await pollChat(sessionId);
-        if (res.status === 'completed') {
-          setResult(res.result);
-          setStatus('completed');
-          clearInterval(pollRef.current);
-        } else if (res.status === 'error') {
-          setResult(res.error);
-          setStatus('error');
-          clearInterval(pollRef.current);
-        }
-      } catch {
-        // retry
-      }
-    }, 1500);
-
-    return () => clearInterval(pollRef.current);
-  }, [sessionId, status]);
-
-  // Poll for events + approvals
-  useEffect(() => {
-    if (!sessionId) return;
-
-    const poll = async () => {
-      try {
-        const [evts, apprs] = await Promise.all([
-          getEvents(sessionId),
-          fetchPendingApprovals(),
-        ]);
-        setEvents(evts);
-        setApprovals(apprs);
-      } catch {
-        // ignore
-      }
-    };
-
-    poll();
-    eventRef.current = setInterval(poll, 2000);
-    return () => clearInterval(eventRef.current);
-  }, [sessionId]);
 
   // Auto-scroll timeline
   useEffect(() => {
     timelineRef.current?.lastElementChild?.scrollIntoView({ behavior: 'smooth' });
-  }, [events, approvals]);
+  }, [events]);
 
   const handleRun = async () => {
     setStatus('running');
-    setResult(null);
     setEvents([]);
+    setSummary(null);
     setApprovals([]);
+    setError(null);
 
     try {
-      const res = await startChat(agentKey, '');
-      setSessionId(res.session_id);
+      const res = await runScenario(agentKey);
+      setEvents(res.events.map((e, i) => ({
+        id: i + 1,
+        timestamp: new Date().toLocaleTimeString(),
+        agent_name: res.agent_name,
+        action: e.action,
+        status: e.status,
+        details: e.detail,
+      })));
+      setSummary(res.summary);
+      setStatus('completed');
+
+      // Fetch any pending approvals that were created
+      try {
+        const apprs = await fetchPendingApprovals();
+        setApprovals(apprs.filter(a => a.agent_name === res.agent_name));
+      } catch {
+        // ignore
+      }
     } catch (err) {
-      setResult(err.message);
+      setError(err.message);
       setStatus('error');
     }
   };
 
-  const handleApprovalDecided = useCallback((id, decision) => {
+  const handleApprovalDecided = (id) => {
     setApprovals((prev) => prev.filter((a) => a.id !== id));
-  }, []);
+  };
 
   if (!agent) {
     return (
@@ -191,7 +168,7 @@ export default function ScenarioPage() {
       </div>
 
       {/* Event Timeline */}
-      {(events.length > 0 || pendingApprovals.length > 0 || status === 'running') && (
+      {(events.length > 0 || status === 'running') && (
         <div className="rounded-2xl border border-divider bg-surface overflow-hidden mb-6">
           <div className="flex items-center gap-2 px-5 py-3 border-b border-divider">
             <Shield size={16} className="text-accent" />
@@ -208,31 +185,35 @@ export default function ScenarioPage() {
             {status === 'running' && events.length === 0 && (
               <div className="flex items-center gap-2 text-sm text-ink-faint py-4 justify-center">
                 <Loader2 size={16} className="animate-spin" />
-                Waiting for agent to start executing tools...
+                Running agent scenario...
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Result */}
-      {status === 'completed' && result && (
+      {/* Summary */}
+      {status === 'completed' && summary && (
         <div className="rounded-2xl border border-positive/30 bg-positive-bg p-5">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-3">
             <CheckCircle2 size={18} className="text-positive" />
             <h3 className="text-sm font-semibold text-positive">Scenario Complete</h3>
           </div>
-          <p className="text-sm whitespace-pre-wrap">{result}</p>
+          <div className="flex gap-6 text-sm">
+            <span className="text-positive font-medium">{summary.allowed} allowed</span>
+            <span className="text-negative font-medium">{summary.blocked} blocked</span>
+            <span className="text-caution font-medium">{summary.pending} pending review</span>
+          </div>
         </div>
       )}
 
-      {status === 'error' && result && (
+      {status === 'error' && error && (
         <div className="rounded-2xl border border-negative/30 bg-negative-bg p-5">
           <div className="flex items-center gap-2 mb-2">
             <XCircle size={18} className="text-negative" />
             <h3 className="text-sm font-semibold text-negative">Error</h3>
           </div>
-          <p className="text-sm">{result}</p>
+          <p className="text-sm">{error}</p>
         </div>
       )}
     </div>

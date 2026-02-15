@@ -22,8 +22,6 @@ export default function DemoAgentCard({ agentKey, config }) {
 
   const allowed = config.decorator.allowed_actions || [];
   const blocked = config.decorator.blocked_actions || [];
-  const isChat = agentKey === 'customer_support';
-
   return (
     <div className="rounded-2xl border border-divider bg-surface p-5 transition hover:border-divider-dark hover:shadow-sm">
       <div className="flex items-start gap-3 mb-4">
@@ -59,14 +57,10 @@ export default function DemoAgentCard({ agentKey, config }) {
       </div>
 
       <button
-        onClick={() => navigate(isChat ? '/chat' : `/scenario/${agentKey}`)}
-        className={`w-full rounded-xl py-2.5 text-sm font-medium text-white transition ${
-          isChat
-            ? 'bg-accent hover:bg-accent/90'
-            : 'bg-ink hover:bg-ink/80'
-        }`}
+        onClick={() => navigate(`/scenario/${agentKey}`)}
+        className="w-full rounded-xl py-2.5 text-sm font-medium text-white transition bg-ink hover:bg-ink/80"
       >
-        {isChat ? 'Start Chat' : 'Run Scenario'}
+        Run Scenario
       </button>
     </div>
   );

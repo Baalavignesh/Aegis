@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Shield, RotateCcw, Loader2, ExternalLink } from 'lucide-react';
+import { Shield, RotateCcw, Loader2 } from 'lucide-react';
 import DemoAgentCard from '../components/DemoAgentCard';
 import { seedDemo } from '../api';
 
@@ -99,14 +99,9 @@ export default function DemoPage() {
         {seedResult?.error && (
           <span className="text-xs text-negative">{seedResult.error}</span>
         )}
-        <a
-          href="http://localhost:5173"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="ml-auto flex items-center gap-1.5 text-xs text-accent hover:underline"
-        >
-          Open Governance Dashboard <ExternalLink size={12} />
-        </a>
+        <span className="ml-auto text-xs text-ink-faint">
+          Data reflects on the production dashboard in real-time
+        </span>
       </div>
 
       {/* Agent Cards Grid */}

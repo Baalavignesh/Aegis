@@ -32,13 +32,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Demo router is optional — requires aegis_demo + sentinel + langchain.
-# On Vercel (serverless), these may not be available.
-try:
-    from demo_router import demo_router
-    app.include_router(demo_router, prefix="/demo")
-except ImportError:
-    pass
+from demo_router import demo_router
+app.include_router(demo_router, prefix="/demo")
 
 
 # -- Pydantic Models (Dashboard) ----------------------------------------------

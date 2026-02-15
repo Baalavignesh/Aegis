@@ -16,14 +16,11 @@ async function request(method, path, body) {
 
 export const seedDemo = () => request('POST', '/demo/seed');
 
-export const startChat = (agentKey, message) =>
-  request('POST', '/demo/chat', { agent_key: agentKey, message });
+export const runScenario = (agentKey) =>
+  request('POST', '/demo/run-scenario', { agent_key: agentKey });
 
-export const pollChat = (sessionId) =>
-  request('GET', `/demo/chat/${sessionId}`);
-
-export const getEvents = (sessionId) =>
-  request('GET', `/demo/events/${sessionId}`);
+export const getAgentEvents = (agentName) =>
+  request('GET', `/demo/events/${encodeURIComponent(agentName)}`);
 
 export const fetchPendingApprovals = () =>
   request('GET', '/approvals/pending');
