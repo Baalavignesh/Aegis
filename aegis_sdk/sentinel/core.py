@@ -94,9 +94,7 @@ def wait_for_approval(
         f"Approval #{approval_id} — waiting for human decision.",
     )
 
-    deadline = time.time() + APPROVAL_TIMEOUT
-
-    while time.time() < deadline:
+    while True:
         decision = db.get_approval_status(approval_id)
 
         if decision == "APPROVED":
@@ -116,13 +114,3 @@ def wait_for_approval(
             )
 
         time.sleep(APPROVAL_POLL_INTERVAL)
-
-    # Timeout — auto-deny
-    db.decide_approval(approval_id, "DENIED")
-    db.log_event(
-        agent_name, action_name, "TIMEOUT",
-        f"Approval #{approval_id} — timed out after {APPROVAL_TIMEOUT}s.",
-    )
-    raise SentinelApprovalError(
-        f"Action '{action_name}' timed out waiting for approval."
-    )
