@@ -5,7 +5,7 @@ A compliant agent with elevated permissions including SSN access for identity ve
 
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import create_agent
+from langgraph.prebuilt import create_react_agent
 
 from ..core import AegisAgent
 from ..core import scan_transactions_tool, flag_account_tool, verify_identity_tool, access_ssn_tool
@@ -34,7 +34,7 @@ def run():
 
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
     llm = ChatGoogleGenerativeAI(model=model)
-    agent_executor = create_agent(llm, monitored_tools)
+    agent_executor = create_react_agent(llm, monitored_tools)
 
     agent.log_thought("Starting fraud scan on recent transactions")
 

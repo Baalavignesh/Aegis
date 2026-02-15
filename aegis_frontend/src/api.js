@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://aegis-backend-ntq8.onrender.com';
 
 export async function fetchStats() {
     const res = await fetch(`${API_BASE}/stats`);
