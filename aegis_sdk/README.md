@@ -1,183 +1,88 @@
-# sentinel-guardrails
+# aegis-sentinel 🛡️
 
-Python SDK for defining, enforcing, and auditing AI agent policies using decorators with MongoDB persistence.
+**Governance guardrails for AI agents** — drop-in policy decorators, real-time audit logging, kill-switch, and human-in-the-loop approval.
 
-## Installation
+[![PyPI](https://img.shields.io/pypi/v/aegis-sentinel)](https://pypi.org/project/aegis-sentinel/)
+[![Python](https://img.shields.io/pypi/pyversions/aegis-sentinel)](https://pypi.org/project/aegis-sentinel/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## Install
 
 ```bash
-cd aegis_sdk
-pip install -e .
+pip install aegis-sentinel
+```
+
+For LangChain integration:
+```bash
+pip install aegis-sentinel[langchain]
 ```
 
 ## Quick Start
 
 ```python
-from sentinel import agent, monitor, agent_context
+from sentinel import AegisAgent
 
-@agent("AegisBot", owner="alice", allows=["get_price"], blocks=["send_money"])
-class AegisBot:
-    pass
+# 1. Define your agent with a policy decorator
+agent = AegisAgent(
+    name="Customer Support",
+    role="Service representative",
+    decorator={
+        "allowed_actions": ["lookup_balance", "send_notification"],
+        "blocked_actions": ["delete_records", "access_ssn"],
+        "blocked_data": [],
+        "blocked_servers": [],
+    },
+)
 
-@monitor
-def get_price(symbol: str) -> str:
-    return f"{symbol}: $100"
+# 2. Wrap your LangChain tools — Aegis enforces policies automatically
+monitored_tools = agent.wrap_langchain_tools(your_tools)
 
-@monitor
-def send_money(to: str, amount: float) -> str:
-    return f"Sent {amount} to {to}"
-
-with agent_context("AegisBot"):
-    get_price("BTC")      # ALLOWED — logged to audit_log
-    send_money("Eve", 50) # raises SentinelBlockedError
+# 3. Use with any LLM
+from langgraph.prebuilt import create_react_agent
+executor = create_react_agent(llm, monitored_tools)
+result = executor.invoke({"messages": [("user", "Help this customer")]})
 ```
 
-### Shared Tools Across Agents
+## Features
 
-The same `@monitor`-decorated function works under different agents — the policy check depends on which agent is active in the context:
+| Feature | Description |
+|---|---|
+| 🎯 **Policy Decorators** | Define allowed/blocked actions per agent |
+| 📝 **Audit Logging** | Every tool call logged to MongoDB with timestamps |
+| 🛑 **Kill Switch** | Instantly pause any agent |
+| 👤 **Human-in-the-Loop** | Actions requiring approval wait for human decision |
+| 🔌 **LangChain Native** | Works with LangChain tools out of the box |
+| 🍃 **MongoDB Backend** | Scales with your infrastructure |
 
-```python
-from sentinel import monitor, agent_context
-from sentinel.core import register_agent
+## Environment Variables
 
-register_agent("SupportBot", allows=["lookup_balance"], blocks=["delete_records"])
-register_agent("AdminBot",   allows=["lookup_balance", "delete_records"])
-
-@monitor
-def lookup_balance(customer_id: int) -> str:
-    return f"Balance: $5,000"
-
-@monitor
-def delete_records(table: str) -> str:
-    return f"Deleted {table}"
-
-with agent_context("SupportBot"):
-    lookup_balance(42)    # ALLOWED
-    delete_records("tmp") # BLOCKED
-
-with agent_context("AdminBot"):
-    lookup_balance(42)    # ALLOWED
-    delete_records("tmp") # ALLOWED
+```bash
+# Required
+MONGO_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/
+MONGO_DB_NAME=sentinel_db   # optional, defaults to sentinel_db
 ```
 
 ## API Reference
 
-### Decorators
+### `AegisAgent(name, role, decorator)`
+Create a governed agent with policy rules.
 
-**`@agent(name, *, owner="", allows=None, blocks=None)`**
+### `agent.wrap_langchain_tools(tools)`
+Wrap LangChain tools with policy enforcement. Returns monitored tools.
 
-Registers an agent and seeds its policies into the MongoDB database at import time.
+### `agent.log_thought(message)`
+Log agent reasoning to the audit trail.
 
-- `name` — unique agent identifier (also the DB primary key)
-- `owner` — optional owner/role string
-- `allows` — list of action names to ALLOW
-- `blocks` — list of action names to BLOCK
+### `kill_agent(name)` / `revive_agent(name)`
+Emergency kill-switch to pause/resume an agent.
 
-**`@monitor`**
+### `show_audit_log(name, limit=10)`
+Retrieve recent audit log entries for an agent.
 
-Wraps a function with the database-polling firewall. On every call it:
+## Dashboard
 
-1. Reads the active agent from `agent_context`
-2. Queries MongoDB for the agent's status (kill-switch check)
-3. Queries MongoDB for the action's policy (ALLOW/BLOCK)
-4. Logs the result to `audit_log` collection
-5. Raises `SentinelBlockedError` or `SentinelKillSwitchError` if denied
+Aegis includes a full React dashboard for monitoring agents in real-time. See the [main repo](https://github.com/Baalavignesh/Aegis) for details.
 
-### Context Management
+## License
 
-```python
-from sentinel import agent_context, set_agent_context, reset_agent_context
-```
-
-**`agent_context(name)`** — context manager that sets the active agent for a block:
-
-```python
-with agent_context("FraudBot"):
-    scan_transactions()  # checks FraudBot's policies
-```
-
-**`set_agent_context(name)` / `reset_agent_context(token)`** — manual control for frameworks that can't use `with` blocks:
-
-```python
-token = set_agent_context("FraudBot")
-try:
-    scan_transactions()
-finally:
-    reset_agent_context(token)
-```
-
-### Core Functions
-
-```python
-from sentinel.core import register_agent, validate_action
-```
-
-- **`register_agent(name, owner="", allows=None, blocks=None)`** — upserts agent + policy rows
-- **`validate_action(agent_name, action_name)`** — polls DB, returns `True` (ALLOW), `False` (unknown), or raises on BLOCK/KILLED
-
-### CLI Helpers
-
-```python
-from sentinel import kill_agent, revive_agent, show_audit_log
-```
-
-- **`kill_agent(name)`** — sets agent status to PAUSED (kill switch)
-- **`revive_agent(name)`** — sets agent status back to ACTIVE
-- **`show_audit_log(name, limit=10)`** — prints the last N audit log entries
-
-Also available as CLI commands: `sentinel kill <name>`, `sentinel revive <name>`, `sentinel log <name>`.
-
-### Exceptions
-
-- **`SentinelBlockedError(action)`** — raised when a BLOCK policy matches
-- **`SentinelKillSwitchError(agent_name)`** — raised when the agent is PAUSED
-- **`SentinelApprovalError(action)`** — raised when human approval is required
-
-### Database Layer
-
-```python
-from sentinel import db
-
-# MongoDB connection via environment: MONGO_URI, MONGO_DB_NAME
-db.init_db()                         # create indexes
-db.log_event(agent, action, status, details)
-db.get_audit_log(agent, limit=10)
-db.update_status(agent, "PAUSED")
-db.get_agent_status(agent)
-db.get_policy(agent, action)
-```
-
-**Environment variables:** `MONGO_URI` (default `mongodb://localhost:27017/`), `MONGO_DB_NAME` (default `sentinel_db`).
-
-## MongoDB Schema
-
-Collections in the database named by `MONGO_DB_NAME`:
-
-- **agents** — `name` (unique), `status` (ACTIVE/PAUSED), `owner`, `created_at`
-- **policies** — `agent_name`, `action`, `rule_type` (ALLOW/BLOCK/REVIEW); unique index on `(agent_name, action)`
-- **audit_log** — `id`, `timestamp`, `agent_name`, `action`, `status`, `details`
-- **pending_approvals** — `id`, `agent_name`, `action`, `args_json`, `status`, `created_at`, `decided_at`
-- **counters** — used for auto-increment-style `id` generation
-
-## How It Works
-
-1. **`@agent`** runs at import time — writes agent + policy documents to MongoDB
-2. **`@monitor`** wraps functions — on each call, reads the active agent from `agent_context`, then queries MongoDB for live status and policy
-3. No caching — every call hits MongoDB, so policy changes (including kill-switch) take effect immediately
-4. All decisions are logged to `audit_log` for full traceability
-
-## Architecture
-
-```
-Your Agent Code
-    │
-    ├── @agent("Bot", allows=[...], blocks=[...])
-    │       └── writes to MongoDB: agents + policies collections
-    │
-    └── @monitor
-            └── on each call:
-                 ├── read agent_context        (who is calling?)
-                 ├── query agents collection   (kill-switch)
-                 ├── query policies collection (ALLOW/BLOCK)
-                 ├── execute function or raise error
-                 └── insert into audit_log
-```
+MIT — see [LICENSE](LICENSE).
