@@ -1,30 +1,16 @@
-"""Setup script for sentinel-guardrails."""
+"""Kept for backward compatibility — see pyproject.toml for canonical config."""
 
 from setuptools import setup, find_packages
 
 setup(
-    name="sentinel-guardrails",
+    name="aegis-sentinel",
     version="0.1.0",
-    description=(
-        "Define, document, and enforce agentic AI policies using Python decorators "
-        "with SQLite persistence and audit logging."
-    ),
-    author="Sentinel Team",
     packages=find_packages(),
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     install_requires=[
-        "pymongo",
-        "python-dotenv",
-        "pydantic",
-    ],
-    entry_points={
-        "console_scripts": [
-            "sentinel=sentinel.cli:main",
-        ],
-    },
-    classifiers=[
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
+        "pymongo>=4.0",
+        "dnspython>=2.0",
+        "python-dotenv>=1.0",
+        "pydantic>=2.0",
     ],
 )
