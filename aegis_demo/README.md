@@ -18,10 +18,8 @@ aegis_demo/
 │   └── tools.py                           # 17 shared banking tools (LangChain @tool StructuredTool)
 │
 ├── data/                                  # Database layer
-│   ├── __init__.py                        # Re-exports seed_database, DB_PATH
-│   ├── fake_data.py                       # SQLite seeder — customers, accounts, transactions
-│   ├── demo_bank.db                       # Seeded bank data (created at runtime)
-│   └── sentinel.db                        # SDK audit log + policies (created at runtime)
+│   ├── __init__.py                        # Re-exports seed_database
+│   └── fake_data.py                       # MongoDB seeder — customers, accounts, transactions (same DB as SDK)
 │
 └── agents/                                # LangChain agent definitions
     ├── __init__.py                        # Re-exports all agent modules
@@ -37,11 +35,11 @@ The demo integrates with the real `sentinel-guardrails` SDK. The adapter (`core/
 
 | SDK Feature | How the Demo Uses It |
 |-------------|---------------------|
-| `register_agent()` | Called in `AegisAgent.__init__()` — persists agent + policies to SQLite |
-| `validate_action()` | Called in `_check_firewall()` — polls DB for live status & policy on every tool call |
+| `register_agent()` | Called in `AegisAgent.__init__()` — persists agent + policies to MongoDB |
+| `validate_action()` | Called in `_check_firewall()` — polls MongoDB for live status & policy on every tool call |
 | `db.log_event()` | Called in `_log_to_sdk()` — logs every decision (ALLOWED/BLOCKED/KILLED/REVIEW) to audit_log |
 | `kill_agent()` / `revive_agent()` | Demonstrated after agents run — shows kill-switch pausing all actions |
-| `show_audit_log()` | Prints the full audit trail from `sentinel.db` at the end of the demo |
+| `show_audit_log()` | Prints the full audit trail from MongoDB at the end of the demo |
 
 The adapter retains local logic for things the SDK doesn't handle: LangChain `StructuredTool` wrapping, `blocked_data`/`blocked_servers` keyword checks in args, REVIEW state for undeclared actions, digital ID generation, and ANSI-colored terminal output.
 
@@ -140,6 +138,8 @@ cp .env.example .env
 |----------|----------|---------|-------------|
 | `GOOGLE_API_KEY` | Yes | — | Google Gemini API key |
 | `GEMINI_MODEL` | No | `gemini-2.5-flash-lite` | Gemini model to use |
+| `MONGO_URI` | No | `mongodb://localhost:27017/` | MongoDB connection string (shared with SDK) |
+| `MONGO_DB_NAME` | No | `sentinel_db` | MongoDB database name |
 | `LANGSMITH_API_KEY` | No | — | LangSmith tracing key |
 | `LANGSMITH_TRACING` | No | `false` | Enable LangSmith tracing |
 | `LANGSMITH_PROJECT` | No | `aegis-demo` | LangSmith project name |
@@ -166,7 +166,7 @@ python -m aegis_demo --agent marketing
 3. **Loan Processor** — Aegis blocks credit card access, SSN access, external server connections, and record deletion (4 BLOCKED). Allowed actions (credit score, application, notification) pass through.
 4. **Marketing Outreach** — blocked from accessing phone/SSN data and connecting to the marketplace (3 BLOCKED). The `export_customer_list` tool triggers a REVIEW state (undeclared action). Allowed actions (preferences, promo emails, report) pass through (5 ALLOWED).
 5. **Kill-Switch Demo** — after agents run, the first agent is paused (KILLED), then revived
-6. **Audit Log** — full history from `sentinel.db` printed at the end
+6. **Audit Log** — full history from MongoDB printed at the end
 
 ## Terminal Output
 
@@ -241,7 +241,7 @@ DECORATOR = {
     "blocked_servers": ["external-data-broker.com"],
 }
 
-# 2. Create an Aegis-monitored agent (registers in SDK's SQLite DB)
+# 2. Create an Aegis-monitored agent (registers in SDK's MongoDB)
 agent = AegisAgent(name="...", role="...", decorator=DECORATOR)
 
 # 3. Wrap LangChain tools with Aegis firewall
@@ -267,7 +267,7 @@ When the LangChain agent calls a tool, the Aegis firewall intercepts and evaluat
 7. All checks pass               -> ALLOWED and execute
 ```
 
-Steps 1-3 delegate to the SDK's `validate_action()` which polls SQLite on every call. Steps 4-6 are local checks in the adapter. All decisions are logged to `sentinel.db` via `db.log_event()`.
+Steps 1-3 delegate to the SDK's `validate_action()` which polls MongoDB on every call. Steps 4-6 are local checks in the adapter. All decisions are logged to MongoDB via `db.log_event()`.
 
 Blocked/review decisions raise a `ToolException` that flows back to the LLM as an error message. The agent receives the error, notes it, and continues to the next step — demonstrating how governance controls work without crashing the agent.
 
@@ -278,31 +278,30 @@ Blocked/review decisions raise a `ToolException` that flows back to the LLM as a
 - `handle_tool_error=True` on wrapped tools ensures `ToolException` flows back to the LLM as a message
 - Agents use `create_agent` from LangGraph for ReAct-style reasoning
 - The orchestrator adds a 20-second pause between agents for API rate limiting
-- `sentinel.db` is deleted at the start of each run for reproducibility
+- Demo seeds/clears MongoDB collections at the start of each run for reproducibility
 
-## Database Schema
+## Database Schema (MongoDB)
 
-### Bank Database (`data/demo_bank.db`)
+The demo and SDK share one MongoDB database (`MONGO_DB_NAME`, default `sentinel_db`).
 
-`data/fake_data.py` seeds a SQLite database with:
+### Bank collections (seeded by `data/fake_data.py`)
 
-| Table | Fields |
-|-------|--------|
+| Collection | Fields |
+|------------|--------|
 | `customers` | id, name, ssn, credit_card_number, phone, email, address, dob |
 | `accounts` | id, customer_id, account_type (checking/savings), balance, status |
 | `transactions` | id, account_id, type (debit/credit), amount, description, timestamp |
 
 Seeded with 10 fake customers, ~13-16 accounts, and ~80-100 transactions.
 
-### Sentinel Database (`data/sentinel.db`)
+### Sentinel collections (used by SDK and backend)
 
-Created by the SDK at runtime. Contains:
-
-| Table | Purpose |
-|-------|---------|
+| Collection | Purpose |
+|------------|---------|
 | `agents` | Registered agents with status (ACTIVE/PAUSED) and owner |
-| `policies` | Per-agent action policies (ALLOW/BLOCK) |
+| `policies` | Per-agent action policies (ALLOW/BLOCK/REVIEW) |
 | `audit_log` | Every firewall decision with timestamp, action, status, and details |
+| `pending_approvals` | Human-in-the-loop approval queue |
 
 ## Tech Stack
 
@@ -311,8 +310,8 @@ Created by the SDK at runtime. Contains:
 | Agent Framework | LangChain + LangGraph (`create_agent`) |
 | LLM | Google Gemini (`gemini-2.5-flash-lite` default) |
 | Tools | LangChain `@tool` decorator (`StructuredTool`) |
-| Bank Data | SQLite (`data/demo_bank.db`) |
-| Governance | `sentinel-guardrails` SDK (`data/sentinel.db`) |
+| Bank Data | MongoDB (customers, accounts, transactions) |
+| Governance | `sentinel-guardrails` SDK (MongoDB: agents, policies, audit_log) |
 | Environment | python-dotenv (`.env` file) |
 
 ## Gemini Model Notes

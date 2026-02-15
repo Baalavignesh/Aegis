@@ -12,10 +12,10 @@ Aegis (Agent Sentinel) is an AI agent governance platform — a firewall and obs
 
 Three-tier system with four directories:
 
-- **aegis_backend/** — FastAPI server (port 8000): agent registry, firewall/policy engine, governance rules, review queue, analytics. Implemented with SQLModel + SQLite. API docs at `/docs`.
-- **aegis_frontend/** — React SPA via Vite (port 5173): Robinhood-style dashboard with 5 pages (Dashboard, Agents, Agent Detail, Activity, Approvals), real-time polling, agent kill-switch toggle, HITL approval queue. Built with React Router, Tailwind CSS v4, and Lucide icons.
-- **aegis_sdk/** — `sentinel-guardrails` Python library: `@agent` and `@monitor` decorators, `agent_context` for dynamic agent resolution, SQLite-backed policy enforcement, kill-switch (`PAUSED`/`ACTIVE`), audit logging, CLI helpers. No network dependency — all local via SQLite.
-- **aegis_demo/** — Four LangChain + Gemini agents (Customer Support, Fraud Detection, Loan Processing, Marketing) demonstrating Aegis firewall governance over a personal finance scenario with a seeded SQLite bank database. Integrates with the real SDK via an adapter in `core/mock_aegis.py`.
+- **aegis_backend/** — FastAPI server (port 8000): agent registry, firewall/policy engine, governance rules, review queue, analytics. Implemented with MongoDB via `sentinel.db`. API docs at `/docs`.
+- **aegis_frontend/** — React SPA via Vite (port 5173): Robinhood-style dashboard with 5 pages (Dashboard, Agents, Agent Detail, Activity, Approvals), real-time polling, agent kill-switch toggle, HITL approval queue. Built with React Router, Tailwind CSS v4, and Lucide icons. Connects to backend via `VITE_API_URL` (default `http://localhost:8000`).
+- **aegis_sdk/** — `sentinel-guardrails` Python library: `@agent` and `@monitor` decorators, `agent_context` for dynamic agent resolution, MongoDB-backed policy enforcement (agents, policies, audit_log, pending_approvals), kill-switch (`PAUSED`/`ACTIVE`), audit logging, CLI helpers. Uses `MONGO_URI` and `MONGO_DB_NAME`.
+- **aegis_demo/** — Four LangChain + Gemini agents (Customer Support, Fraud Detection, Loan Processing, Marketing) demonstrating Aegis firewall governance over a personal finance scenario with MongoDB for both sentinel data and demo bank data (customers, accounts, transactions). Integrates with the real SDK via an adapter in `core/mock_aegis.py`.
 
 ## Key Concepts
 
@@ -24,7 +24,7 @@ Three-tier system with four directories:
 - **Firewall Logic**: blocked → BLOCK; allowed → continue checks; unknown → REVIEW (human approval); then check servers and data
 - **Agent Context**: `agent_context("BotName")` sets the active agent via `contextvars` so `@monitor`-decorated shared tools resolve the correct policy at call time
 - **Kill Switch**: Agent status can be set to PAUSED via `kill_agent()`, blocking all actions until `revive_agent()` is called
-- **Audit Log**: Every firewall decision (ALLOWED/BLOCKED/KILLED) is persisted to `audit_log` table in SQLite
+- **Audit Log**: Every firewall decision (ALLOWED/BLOCKED/KILLED) is persisted to `audit_log` collection in MongoDB
 
 ## Development Commands
 
@@ -54,10 +54,10 @@ npm run dev          # serves at http://localhost:5173
 
 | Module | Stack |
 |--------|-------|
-| Backend | FastAPI, SQLite, raw SQL queries (no ORM) |
+| Backend | FastAPI, MongoDB (pymongo), shared `sentinel.db` module |
 | Frontend | React 19, Vite, React Router v6, Tailwind CSS v4, Lucide icons |
-| SDK | Python 3.10+, SQLite, `contextvars`, decorators (`@agent`, `@monitor`), Click CLI |
-| Demo | LangChain, LangGraph, Gemini (google-genai), python-dotenv |
+| SDK | Python 3.10+, MongoDB (pymongo), `contextvars`, decorators (`@agent`, `@monitor`), Click CLI |
+| Demo | LangChain, LangGraph, Gemini (google-genai), python-dotenv, MongoDB for bank + sentinel data |
 
 ## API Structure
 
@@ -67,9 +67,10 @@ Additional APIs from the spec (manifests, governance rules, dependency graph, th
 
 ## Environment Variables
 
-Backend: `SENTINEL_DB_URL`, `SENTINEL_HOST`, `SENTINEL_PORT`, `SENTINEL_CORS_ORIGINS`, `SENTINEL_LOG_LEVEL`
-SDK: `sentinel.db.DB_PATH` (Python variable, default `"sentinel.db"`)
-Demo: `GOOGLE_API_KEY` (in `aegis_demo/.env`), `GEMINI_MODEL` (optional, default `gemini-2.5-flash-lite`)
+Backend: Uses SDK's MongoDB — set `MONGO_URI`, `MONGO_DB_NAME` (optional; defaults: `mongodb://localhost:27017/`, `sentinel_db`). Also `SENTINEL_HOST`, `SENTINEL_PORT`, `SENTINEL_CORS_ORIGINS`, `SENTINEL_LOG_LEVEL` if needed.
+SDK: `MONGO_URI` (default `mongodb://localhost:27017/`), `MONGO_DB_NAME` (default `sentinel_db`)
+Demo: `GOOGLE_API_KEY` (in `aegis_demo/.env`), `GEMINI_MODEL` (optional), `MONGO_URI`, `MONGO_DB_NAME` (same MongoDB as SDK)
+Frontend: `VITE_API_URL` (default `http://localhost:8000` — backend API base URL)
 
 ## Important Files
 
@@ -79,7 +80,7 @@ Demo: `GOOGLE_API_KEY` (in `aegis_demo/.env`), `GEMINI_MODEL` (optional, default
   - `core.py` — `register_agent()`, `validate_action()` (DB-polling engine)
   - `decorators.py` — `@agent` (import-time registration), `@monitor` (context-based firewall wrapper)
   - `context.py` — `agent_context()`, `set_agent_context()`, `reset_agent_context()` (contextvars-based agent resolution)
-  - `db.py` — SQLite layer (agents, policies, audit_log tables)
+  - `db.py` — MongoDB layer (agents, policies, audit_log, pending_approvals collections)
   - `cli.py` — `kill_agent()`, `revive_agent()`, `show_audit_log()`
   - `exceptions.py` — `SentinelBlockedError`, `SentinelKillSwitchError`, `SentinelApprovalError`
 - `aegis_demo/core/mock_aegis.py` — SDK adapter that bridges `sentinel-guardrails` with LangChain tool wrapping and ANSI terminal output

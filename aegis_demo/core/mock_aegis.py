@@ -59,7 +59,7 @@ class AegisAgent:
         self.stats = {"allowed": 0, "blocked": 0, "review": 0, "killed": 0}
         _agent_stats[self.digital_id] = {"name": name, "stats": self.stats}
 
-        # Register agent + policies in SDK's SQLite database
+        # Register agent + policies in SDK's MongoDB database
         register_agent(
             name,
             owner=role,
@@ -92,7 +92,7 @@ class AegisAgent:
         6. Check blocked_servers in args -> BLOCKED
         7. All pass -> ALLOWED
         """
-        # Steps 1-3: delegate to SDK (queries SQLite on every call)
+        # Steps 1-3: delegate to SDK (queries MongoDB on every call)
         try:
             result = validate_action(self.name, action)
         except SentinelKillSwitchError:

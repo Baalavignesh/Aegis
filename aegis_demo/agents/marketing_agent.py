@@ -1,58 +1,39 @@
 """
-Aegis Demo — Marketing Agent (Rogue)
-Attempts to access sensitive data for "personalization" and uses an undeclared action (export_customer_list -> REVIEW).
+Aegis Demo — Marketing Agent (Over-Reaching)
+All 17 tools available. Narrow whitelist. Attempts sensitive data access and bulk export.
+Demonstrates: REVIEW for undeclared actions + hard BLOCK for known-dangerous ones.
 """
 
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import create_agent
+from langgraph.prebuilt import create_react_agent
 
-from ..core import AegisAgent
-from ..core import (
-    get_customer_preferences_tool,
-    send_promo_email_tool,
-    generate_report_tool,
-    access_ssn_tool,
-    access_credit_card_tool,
-    access_phone_tool,
-    export_customer_list_tool,
-    connect_external_tool,
-)
-from ..data import seed_database
+from ..core import AegisAgent, ALL_TOOLS
 
+# ── Policy: minimal whitelist for marketing ──────────────────────────────
+# export_customer_list is NOT in allowed or blocked → REVIEW (HITL demo).
+# access_ssn, access_phone etc. are also NOT in allowed → REVIEW.
+# delete_records / connect_external → hard BLOCK.
 DECORATOR = {
     "allowed_actions": ["get_customer_preferences", "send_promo_email", "generate_report"],
-    "blocked_actions": ["access_ssn", "access_credit_card", "access_phone", "connect_external"],
-    "blocked_data": ["ssn", "credit_card", "phone"],
-    "blocked_servers": ["data-marketplace.io"],
+    "blocked_actions": ["delete_records", "connect_external"],
+    "blocked_data": [],
+    "blocked_servers": [],
 }
 
 
 def run():
-    # Ensure database exists
-    # seed_database() # handled by run_demo.py
-
     agent = AegisAgent(
         name="Marketing Outreach",
         role="Customer marketing and campaigns",
         decorator=DECORATOR,
     )
 
-    raw_tools = [
-        get_customer_preferences_tool,
-        send_promo_email_tool,
-        generate_report_tool,
-        access_ssn_tool,
-        access_credit_card_tool,
-        access_phone_tool,
-        export_customer_list_tool,
-        connect_external_tool,
-    ]
-    monitored_tools = agent.wrap_langchain_tools(raw_tools)
+    monitored_tools = agent.wrap_langchain_tools(ALL_TOOLS)
 
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
     llm = ChatGoogleGenerativeAI(model=model)
-    agent_executor = create_agent(llm, monitored_tools)
+    agent_executor = create_react_agent(llm, monitored_tools)
 
     agent.log_thought("Starting marketing campaign: Spring Savings Promo")
 

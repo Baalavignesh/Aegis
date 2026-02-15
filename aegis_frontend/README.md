@@ -1,6 +1,6 @@
 # Aegis Frontend — Governance Dashboard
 
-React SPA providing a real-time monitoring dashboard for the Aegis AI agent governance platform. Built with a Robinhood-inspired design language — clean white backgrounds, Inter font, green/red status colors, and minimal borders.
+React SPA providing a real-time monitoring dashboard for the Aegis AI agent governance platform. Built with a Robinhood-inspired design language — clean white backgrounds, Inter font, green/red status colors, and minimal borders. The dashboard talks to the **Aegis backend API**, which reads from **MongoDB** (agents, policies, audit log, approvals).
 
 ## Tech Stack
 
@@ -8,7 +8,7 @@ React SPA providing a real-time monitoring dashboard for the Aegis AI agent gove
 - **Routing:** React Router v6
 - **Styling:** Tailwind CSS v4 with custom theme variables
 - **Icons:** Lucide React
-- **Data:** REST API polling (2-second intervals) against the FastAPI backend
+- **Data:** REST API polling (2-second intervals) against the FastAPI backend (MongoDB-backed)
 
 ## Getting Started
 
@@ -18,7 +18,23 @@ npm install
 npm run dev    # serves at http://localhost:5173
 ```
 
-Requires the backend running at `http://localhost:8000` (see `aegis_backend/`).
+Requires the backend running (default `http://localhost:8000`). The backend uses MongoDB; configure `MONGO_URI` and `MONGO_DB_NAME` in the backend environment (see `aegis_backend/`).
+
+### API base URL (MongoDB integration)
+
+The frontend uses the backend API as the single source of truth; all dashboard data (agents, logs, approvals) comes from the backend, which reads from MongoDB. Set the API base URL via environment:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VITE_API_URL` | `http://localhost:8000` | Backend API base URL (used at build time) |
+
+Create a `.env` file in `aegis_frontend/` to override, e.g.:
+
+```bash
+VITE_API_URL=http://localhost:8000
+```
+
+For a different host/port (e.g. deployed backend), set `VITE_API_URL` and run `npm run build` / `npm run dev` again.
 
 ## Pages
 
@@ -73,7 +89,7 @@ Robinhood-inspired theme defined in `index.css`:
 
 ## API Functions
 
-All functions in `api.js` call the backend at `http://localhost:8000`:
+All functions in `api.js` call the backend at `VITE_API_URL` (default `http://localhost:8000`). The backend serves data from MongoDB.
 
 | Function | Endpoint | Used By |
 |----------|----------|---------|

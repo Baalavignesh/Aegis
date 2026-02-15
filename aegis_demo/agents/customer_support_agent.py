@@ -1,46 +1,44 @@
 """
-Aegis Demo — Customer Support Agent (Well-Behaved)
-A compliant agent that only performs allowed actions.
+Aegis Demo — Customer Support Agent
+All 17 tools are available to the LLM. Aegis policy is the only enforcement layer.
 """
 
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import create_agent
+from langgraph.prebuilt import create_react_agent
 
-from ..core import AegisAgent
-from ..core import lookup_balance_tool, get_transaction_history_tool, send_notification_tool
-from ..data import seed_database
+from ..core import AegisAgent, ALL_TOOLS
 
+# ── Policy: whitelist-only + hard blocks for known-dangerous actions ─────
+# The agent KNOWS about all 17 tools. It can TRY any of them.
+# - allowed_actions  → ALLOWED instantly
+# - blocked_actions  → BLOCKED instantly (hard deny, no human review)
+# - everything else  → REVIEW (goes to dashboard for human approval)
 DECORATOR = {
     "allowed_actions": ["lookup_balance", "get_transaction_history", "send_notification"],
-    "blocked_actions": ["access_ssn", "access_credit_card", "delete_records", "access_phone"],
+    "blocked_actions": ["delete_records", "connect_external"],
     "blocked_data": [],
     "blocked_servers": [],
 }
 
 
 def run():
-    # Ensure database exists
-    # Ensure database exists
-    # seed_database() # handled by run_demo.py
-
     agent = AegisAgent(
         name="Customer Support",
         role="Customer service representative",
         decorator=DECORATOR,
     )
 
-    raw_tools = [lookup_balance_tool, get_transaction_history_tool, send_notification_tool]
-    monitored_tools = agent.wrap_langchain_tools(raw_tools)
+    monitored_tools = agent.wrap_langchain_tools(ALL_TOOLS)
 
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
     llm = ChatGoogleGenerativeAI(model=model)
-    agent_executor = create_agent(llm, monitored_tools)
+    agent_executor = create_react_agent(llm, monitored_tools)
 
     agent.log_thought("Starting customer support session for customer #3")
 
     prompt = (
-        "You are a customer support representative at a bank. "
+        "You are a customer support representative at a major bank. "
         "A customer (ID: 3) has called in about a suspicious charge on their account. "
         "Please: 1) Look up their account balance, 2) Check their recent transaction history "
         "for anything suspicious, and 3) Send them a notification about the investigation. "

@@ -122,7 +122,7 @@ aegis/
 │   │   ├── core.py                    # register_agent(), validate_action()
 │   │   ├── decorators.py             # @agent, @monitor (context-based)
 │   │   ├── context.py                # agent_context(), contextvars resolution
-│   │   ├── db.py                     # SQLite layer (agents, policies, audit_log)
+│   │   ├── db.py                     # MongoDB layer (agents, policies, audit_log, pending_approvals)
 │   │   ├── cli.py                    # kill_agent(), revive_agent(), show_audit_log()
 │   │   └── exceptions.py            # SentinelBlockedError, SentinelKillSwitchError
 │   └── setup.py
@@ -139,10 +139,10 @@ aegis/
 │   │   ├── loan_processing_agent.py   # Rogue (blocked actions)
 │   │   └── marketing_agent.py         # Rogue (undeclared actions)
 │   └── data/
-│       └── fake_data.py              # SQLite seeder (customers, accounts, transactions)
+│       └── fake_data.py              # MongoDB seeder (customers, accounts, transactions)
 │
 ├── aegis_backend/                     # FastAPI Server (implemented)
-│   ├── backend.py                    # 8 REST endpoints, SQLite queries
+│   ├── backend.py                    # 8 REST endpoints, MongoDB via sentinel.db
 │   ├── requirements.txt
 │   └── README.md
 │
@@ -208,7 +208,7 @@ python -m aegis_demo --agent fraud_detection
 ```
 
 ### 3. What you'll see
-Four agents run sequentially. Each tool call shows an AEGIS firewall decision (ALLOWED/BLOCKED/REVIEW). After all agents run, a summary dashboard shows totals, followed by a kill-switch demo and audit log dump from SQLite.
+Four agents run sequentially. Each tool call shows an AEGIS firewall decision (ALLOWED/BLOCKED/REVIEW). After all agents run, a summary dashboard shows totals, followed by a kill-switch demo and audit log dump from MongoDB.
 
 ---
 
@@ -226,7 +226,7 @@ pip install -e .
 ```python
 from sentinel import agent, monitor, agent_context
 
-# 1. Register an agent with policies (persisted to SQLite at import time)
+# 1. Register an agent with policies (persisted to MongoDB at import time)
 @agent("MyAgent", owner="alice",
        allows=["read_database", "send_email"],
        blocks=["delete_records", "access_credentials"])
@@ -293,7 +293,7 @@ from sentinel import kill_agent, revive_agent, show_audit_log
 
 kill_agent("MyAgent")       # Immediately PAUSES — all actions blocked
 revive_agent("MyAgent")     # Reactivates agent
-show_audit_log("MyAgent")   # Print last 10 audit log entries from SQLite
+show_audit_log("MyAgent")   # Print last 10 audit log entries from MongoDB
 ```
 
 ### Framework Integration (LangChain / LangGraph)
@@ -504,10 +504,10 @@ WebSocket message format:
 - [x] Python SDK with `@agent` and `@monitor` decorators
 - [x] Context-based policy enforcement (`agent_context` via `contextvars`)
 - [x] Decorator policy engine (allow/block/review)
-- [x] SQLite-backed audit logging
+- [x] MongoDB-backed audit logging
 - [x] Kill switch (PAUSED/ACTIVE) with immediate enforcement
 - [x] Demo agents (4 LangChain + Gemini agents with governed tool calls)
-- [x] FastAPI backend with SQLite (8 REST endpoints)
+- [x] FastAPI backend with MongoDB (8 REST endpoints)
 - [x] React dashboard with agent monitoring UI (5 pages, Robinhood-style design)
 - [x] Human-in-the-loop review queue (approval/denial flow end-to-end)
 
@@ -578,16 +578,17 @@ A persistent WebSocket connection that broadcasts agent events in real time — 
 ## Environment Variables
 
 ```bash
-# SDK (Python variable, not env var)
-# sentinel.db.DB_PATH = "sentinel.db"       # Set in code before any SDK calls
+# SDK & Backend (MongoDB — shared by both)
+MONGO_URI=mongodb://localhost:27017/        # Optional — default local MongoDB
+MONGO_DB_NAME=sentinel_db                   # Optional — default database name
 
 # Demo
 GOOGLE_API_KEY=your-key-here                # Required — Google Gemini API key
 GEMINI_MODEL=gemini-2.5-flash-lite          # Optional — default model
+# Use same MONGO_URI / MONGO_DB_NAME if demo and backend share one MongoDB
 
-# Backend
-SENTINEL_DB_PATH=/path/to/sentinel.db   # Override default DB path
-# Default: resolves to ../aegis_demo/data/sentinel.db relative to backend.py
+# Frontend (Vite — build-time env)
+VITE_API_URL=http://localhost:8000         # Optional — backend API base URL
 ```
 
 ---

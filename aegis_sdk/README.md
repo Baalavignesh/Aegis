@@ -1,6 +1,6 @@
 # sentinel-guardrails
 
-Python SDK for defining, enforcing, and auditing AI agent policies using decorators with SQLite persistence.
+Python SDK for defining, enforcing, and auditing AI agent policies using decorators with MongoDB persistence.
 
 ## Installation
 
@@ -65,7 +65,7 @@ with agent_context("AdminBot"):
 
 **`@agent(name, *, owner="", allows=None, blocks=None)`**
 
-Registers an agent and seeds its policies into the SQLite database at import time.
+Registers an agent and seeds its policies into the MongoDB database at import time.
 
 - `name` — unique agent identifier (also the DB primary key)
 - `owner` — optional owner/role string
@@ -77,9 +77,9 @@ Registers an agent and seeds its policies into the SQLite database at import tim
 Wraps a function with the database-polling firewall. On every call it:
 
 1. Reads the active agent from `agent_context`
-2. Queries the DB for the agent's status (kill-switch check)
-3. Queries the DB for the action's policy (ALLOW/BLOCK)
-4. Logs the result to `audit_log`
+2. Queries MongoDB for the agent's status (kill-switch check)
+3. Queries MongoDB for the action's policy (ALLOW/BLOCK)
+4. Logs the result to `audit_log` collection
 5. Raises `SentinelBlockedError` or `SentinelKillSwitchError` if denied
 
 ### Context Management
@@ -137,8 +137,8 @@ Also available as CLI commands: `sentinel kill <name>`, `sentinel revive <name>`
 ```python
 from sentinel import db
 
-db.DB_PATH = "path/to/sentinel.db"  # set before any calls
-db.init_db()                         # create tables
+# MongoDB connection via environment: MONGO_URI, MONGO_DB_NAME
+db.init_db()                         # create indexes
 db.log_event(agent, action, status, details)
 db.get_audit_log(agent, limit=10)
 db.update_status(agent, "PAUSED")
@@ -146,39 +146,23 @@ db.get_agent_status(agent)
 db.get_policy(agent, action)
 ```
 
-## SQLite Schema
+**Environment variables:** `MONGO_URI` (default `mongodb://localhost:27017/`), `MONGO_DB_NAME` (default `sentinel_db`).
 
-```sql
-CREATE TABLE agents (
-    name       TEXT PRIMARY KEY,
-    status     TEXT DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE','PAUSED')),
-    owner      TEXT DEFAULT '',
-    created_at TEXT DEFAULT (datetime('now'))
-);
+## MongoDB Schema
 
-CREATE TABLE policies (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    agent_name TEXT NOT NULL,
-    action     TEXT NOT NULL,
-    rule_type  TEXT NOT NULL CHECK(rule_type IN ('ALLOW','BLOCK')),
-    UNIQUE(agent_name, action)
-);
+Collections in the database named by `MONGO_DB_NAME`:
 
-CREATE TABLE audit_log (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp  TEXT DEFAULT (datetime('now')),
-    agent_name TEXT NOT NULL,
-    action     TEXT NOT NULL,
-    status     TEXT NOT NULL CHECK(status IN ('ALLOWED','BLOCKED','KILLED')),
-    details    TEXT DEFAULT ''
-);
-```
+- **agents** — `name` (unique), `status` (ACTIVE/PAUSED), `owner`, `created_at`
+- **policies** — `agent_name`, `action`, `rule_type` (ALLOW/BLOCK/REVIEW); unique index on `(agent_name, action)`
+- **audit_log** — `id`, `timestamp`, `agent_name`, `action`, `status`, `details`
+- **pending_approvals** — `id`, `agent_name`, `action`, `args_json`, `status`, `created_at`, `decided_at`
+- **counters** — used for auto-increment-style `id` generation
 
 ## How It Works
 
-1. **`@agent`** runs at import time — writes agent + policy rows to SQLite
-2. **`@monitor`** wraps functions — on each call, reads the active agent from `agent_context`, then queries the DB for live status and policy
-3. No caching — every call hits SQLite, so policy changes (including kill-switch) take effect immediately
+1. **`@agent`** runs at import time — writes agent + policy documents to MongoDB
+2. **`@monitor`** wraps functions — on each call, reads the active agent from `agent_context`, then queries MongoDB for live status and policy
+3. No caching — every call hits MongoDB, so policy changes (including kill-switch) take effect immediately
 4. All decisions are logged to `audit_log` for full traceability
 
 ## Architecture
@@ -187,13 +171,13 @@ CREATE TABLE audit_log (
 Your Agent Code
     │
     ├── @agent("Bot", allows=[...], blocks=[...])
-    │       └── writes to SQLite: agents + policies tables
+    │       └── writes to MongoDB: agents + policies collections
     │
     └── @monitor
             └── on each call:
                  ├── read agent_context        (who is calling?)
-                 ├── SELECT status FROM agents  (kill-switch)
-                 ├── SELECT rule_type FROM policies (ALLOW/BLOCK)
+                 ├── query agents collection   (kill-switch)
+                 ├── query policies collection (ALLOW/BLOCK)
                  ├── execute function or raise error
-                 └── INSERT INTO audit_log
+                 └── insert into audit_log
 ```

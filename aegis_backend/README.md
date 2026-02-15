@@ -1,12 +1,12 @@
 # Aegis Backend
 
-FastAPI server that powers the Aegis governance dashboard. Reads directly from the SDK's `sentinel.db` using raw SQL queries — no ORM, no table redefinition.
+FastAPI server that powers the Aegis governance dashboard. Uses MongoDB via the SDK's `sentinel.db` module — same database as the SDK (agents, policies, audit_log, pending_approvals).
 
 ## Tech Stack
 
 - **Framework:** FastAPI
-- **Database:** SQLite (shared with `sentinel-guardrails` SDK)
-- **Queries:** Raw SQL via `sqlite3` (no ORM)
+- **Database:** MongoDB (shared with `sentinel-guardrails` SDK via `sentinel.db`)
+- **Driver:** pymongo
 - **Auth:** None (RBAC planned for v1.0)
 
 ## Getting Started
@@ -19,13 +19,16 @@ uvicorn backend:app --reload --port 8000
 
 API docs at `http://localhost:8000/docs` (Swagger UI).
 
-### Database Path
+### MongoDB Configuration
 
-By default, the backend resolves to `../aegis_demo/data/sentinel.db` relative to `backend.py`. Override with the `SENTINEL_DB_PATH` environment variable:
+The backend uses the same MongoDB as the SDK. Set these environment variables (optional — defaults shown):
 
 ```bash
-SENTINEL_DB_PATH=/path/to/sentinel.db uvicorn backend:app --reload --port 8000
+MONGO_URI=mongodb://localhost:27017/   # MongoDB connection string
+MONGO_DB_NAME=sentinel_db              # Database name
 ```
+
+Ensure the SDK's `sentinel.db` module can connect (e.g. same `MONGO_URI` / `MONGO_DB_NAME` in the environment when running the backend).
 
 ## Implemented Endpoints
 

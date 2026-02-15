@@ -52,10 +52,10 @@ with agent_context("FraudBot"):
 
 | Module | Description | Status |
 |--------|------------|--------|
-| **aegis_sdk/** | `sentinel-guardrails` — Python SDK with `@agent`, `@monitor`, `agent_context`, SQLite policy engine, kill-switch, audit log | Implemented |
-| **aegis_demo/** | 4 LangChain + Gemini agents (banking scenario) demonstrating firewall governance | Implemented |
-| **aegis_backend/** | FastAPI server — agent registry, policy engine, review queue, analytics, kill-switch toggle | Implemented |
-| **aegis_frontend/** | React dashboard — live monitoring, agent management, review queue, activity feed | Implemented |
+| **aegis_sdk/** | `sentinel-guardrails` — Python SDK with `@agent`, `@monitor`, `agent_context`, MongoDB-backed policy engine, kill-switch, audit log | Implemented |
+| **aegis_demo/** | 4 LangChain + Gemini agents (banking scenario) demonstrating firewall governance; demo data in MongoDB | Implemented |
+| **aegis_backend/** | FastAPI server — agent registry, policy engine, review queue, analytics, kill-switch toggle (MongoDB) | Implemented |
+| **aegis_frontend/** | React dashboard — live monitoring, agent management, review queue, activity feed (connects to backend API) | Implemented |
 
 ## Quick Start
 
@@ -70,14 +70,18 @@ cd aegis_demo && pip install -r requirements.txt && cd ..
 cp aegis_demo/.env.example aegis_demo/.env
 # Edit .env and add your GOOGLE_API_KEY
 
-# 4. Run the demo (generates governance data in sentinel.db)
+# 4. Configure MongoDB (optional — defaults to localhost)
+# Set MONGO_URI and MONGO_DB_NAME in aegis_demo/.env or aegis_backend env.
+# SDK and backend both use the same MongoDB (sentinel_db) for agents, policies, audit_log.
+
+# 5. Run the demo (generates governance data in MongoDB)
 python -m aegis_demo
 
-# 5. Start the backend API
+# 6. Start the backend API
 cd aegis_backend && pip install -r requirements.txt
 uvicorn backend:app --reload --port 8000
 
-# 6. Start the frontend dashboard
+# 7. Start the frontend dashboard (uses VITE_API_URL or http://localhost:8000)
 cd aegis_frontend && npm install
 npm run dev    # serves at http://localhost:5173
 ```
@@ -87,7 +91,7 @@ npm run dev    # serves at http://localhost:5173
 ```python
 from sentinel import agent, monitor, agent_context, kill_agent, revive_agent
 
-# Register agent with policies (persisted to SQLite)
+# Register agent with policies (persisted to MongoDB)
 @agent("MyBot", owner="alice", allows=["read_data"], blocks=["delete_data"])
 class MyBot: pass
 
@@ -113,7 +117,7 @@ revive_agent("MyBot")
 - **Firewall Logic** — blocked → BLOCK; allowed → continue checks; unknown → REVIEW; then check data and servers
 - **Agent Context** — `contextvars`-based resolution so shared tools enforce the correct agent's policy at call time
 - **Kill Switch** — Set any agent to PAUSED instantly; all actions blocked until revived
-- **Audit Log** — Every decision (ALLOWED/BLOCKED/KILLED) persisted to SQLite with timestamps
+- **Audit Log** — Every decision (ALLOWED/BLOCKED/KILLED) persisted to MongoDB with timestamps
 
 ## Dashboard
 

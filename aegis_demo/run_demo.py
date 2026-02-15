@@ -120,7 +120,7 @@ def demo_kill_switch():
     print(f"  Agent status: {C.GREEN}{C.BOLD}{status}{C.RESET}")
 
     # Show audit log
-    print(f"\n  {C.BOLD}Audit log from sentinel.db:{C.RESET}")
+    print(f"\n  {C.BOLD}Audit log from MongoDB:{C.RESET}")
     show_audit_log(agent_name, limit=20)
 
 
@@ -147,7 +147,7 @@ def main():
 
     print_banner()
 
-    # Clean slate — remove sentinel.db so each run is reproducible
+    # Clean slate — drop MongoDB collections so each run is reproducible
     clean_sentinel_db()
 
     # Seed database
@@ -157,6 +157,8 @@ def main():
 
     if args.agent:
         run_agent(args.agent)
+        print_summary()
+        demo_kill_switch()
     else:
         keys = list(AGENTS.keys())
         for i, key in enumerate(keys):
@@ -166,10 +168,8 @@ def main():
                 print(f"\n  {C.DIM}Waiting {wait}s for API rate limit...{C.RESET}", flush=True)
                 time.sleep(wait)
 
-    print_summary()
-
-    # Demo kill-switch and audit log
-    demo_kill_switch()
+        print_summary()
+        demo_kill_switch()
 
 
 if __name__ == "__main__":
