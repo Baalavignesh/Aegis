@@ -13,6 +13,14 @@ export default function AgentProfile({ agent, onToggle }) {
   }
 
   const isPaused = agent.status === 'PAUSED';
+  const isActive = agent.status === 'ACTIVE';
+
+  const statusBadgeStyle = {
+    REGISTERED: 'bg-surface-hover text-ink-faint',
+    ACTIVE:     'bg-positive-bg text-positive',
+    COMPLETED:  'bg-accent-bg text-accent',
+    PAUSED:     'bg-negative-bg text-negative',
+  }[agent.status] || 'bg-surface-hover text-ink-faint';
 
   const handleToggle = async () => {
     setToggling(true);
@@ -30,29 +38,28 @@ export default function AgentProfile({ agent, onToggle }) {
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-xl font-bold text-ink">{agent.name}</h2>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-              isPaused
-                ? 'bg-negative-bg text-negative'
-                : 'bg-positive-bg text-positive'
-            }`}>
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${statusBadgeStyle}`}>
               {agent.status}
             </span>
           </div>
           <p className="text-sm text-ink-faint mt-0.5">{agent.id}</p>
         </div>
 
-        <button
-          onClick={handleToggle}
-          disabled={toggling}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-colors self-start sm:self-auto ${
-            isPaused
-              ? 'bg-positive text-white hover:bg-positive/90'
-              : 'bg-negative text-white hover:bg-negative/90'
-          } disabled:opacity-50`}
-        >
-          <Power className="w-4 h-4" />
-          {toggling ? '...' : isPaused ? 'Revive' : 'Kill'}
-        </button>
+        {/* Kill switch only available for ACTIVE agents */}
+        {(isActive || isPaused) && (
+          <button
+            onClick={handleToggle}
+            disabled={toggling}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-colors self-start sm:self-auto ${
+              isPaused
+                ? 'bg-positive text-white hover:bg-positive/90'
+                : 'bg-negative text-white hover:bg-negative/90'
+            } disabled:opacity-50`}
+          >
+            <Power className="w-4 h-4" />
+            {toggling ? '...' : isPaused ? 'Revive' : 'Kill'}
+          </button>
+        )}
       </div>
 
       <div className="border-t border-divider" />

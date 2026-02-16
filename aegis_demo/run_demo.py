@@ -10,24 +10,21 @@ import argparse
 import os
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import httpx
 
 from .core import C, get_agent_stats
-from .agents import (
-    customer_support_agent,
-    fraud_detection_agent,
-    loan_processing_agent,
-    marketing_agent,
-)
 
 BACKEND_URL = os.getenv("AEGIS_BACKEND_URL", "http://localhost:8000")
 
-AGENTS = {
-    "customer_support": (customer_support_agent, "Customer Support"),
-    "fraud_detection": (fraud_detection_agent, "Fraud Detection"),
-    "loan_processing": (loan_processing_agent, "Loan Processor"),
-    "marketing": (marketing_agent, "Marketing Outreach"),
+# Agent module names — imported lazily AFTER seed so @agent registration
+# happens on a clean database (seed drops all sentinel collections first).
+AGENT_KEYS = {
+    "customer_support": "Customer Support",
+    "fraud_detection": "Fraud Detection",
+    "loan_processing": "Loan Processor",
+    "marketing": "Marketing Outreach",
 }
 
 
@@ -125,30 +122,58 @@ def demo_kill_switch():
     show_audit_log(agent_name, limit=20)
 
 
-def run_agent(key: str):
-    module, display_name = AGENTS[key]
+def _import_agents():
+    """Lazy-import agent modules so @agent decorators fire AFTER seed.
+
+    Must be called after seed_via_backend() — the seed drops all sentinel
+    collections, then these imports re-register agents on a clean DB.
+    """
+    from .agents import (
+        customer_support_agent,
+        fraud_detection_agent,
+        loan_processing_agent,
+        marketing_agent,
+    )
+    return {
+        "customer_support": (customer_support_agent, "Customer Support"),
+        "fraud_detection": (fraud_detection_agent, "Fraud Detection"),
+        "loan_processing": (loan_processing_agent, "Loan Processor"),
+        "marketing": (marketing_agent, "Marketing Outreach"),
+    }
+
+
+def run_agent(agents: dict, key: str):
+    from sentinel import db as sdb
+
+    module, display_name = agents[key]
     print(f"\n{C.BOLD}{'=' * 54}{C.RESET}")
     print(f" Running: {display_name}")
     print(f"{'=' * 54}")
+
+    # Mark agent ACTIVE while its task runs
+    sdb.update_status(display_name, "ACTIVE")
     try:
         module.run()
     except Exception as e:
         print(f"  {C.RED}Agent error: {e}{C.RESET}")
         traceback.print_exc()
+    finally:
+        # Mark agent COMPLETED when done (whether success or error)
+        sdb.update_status(display_name, "COMPLETED")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Aegis Demo Orchestrator")
     parser.add_argument(
         "--agent",
-        choices=list(AGENTS.keys()),
+        choices=list(AGENT_KEYS.keys()),
         help="Run a specific agent (default: all)",
     )
     args = parser.parse_args()
 
     print_banner()
 
-    # Seed database via backend API
+    # 1. Seed database via backend API — drops all sentinel + banking collections
     print(f"  {C.DIM}Seeding database via backend...{C.RESET}", end=" ")
     try:
         result = seed_via_backend()
@@ -158,18 +183,26 @@ def main():
         print(f"  {C.YELLOW}Make sure the backend is running: uvicorn backend:app --port 8000{C.RESET}")
         return
 
+    # 2. Import agent modules NOW — @agent decorators register on the clean DB
+    agents = _import_agents()
+
     if args.agent:
-        run_agent(args.agent)
+        run_agent(agents, args.agent)
         print_summary()
         demo_kill_switch()
     else:
-        keys = list(AGENTS.keys())
-        for i, key in enumerate(keys):
-            run_agent(key)
-            if i < len(keys) - 1:
-                wait = 20
-                print(f"\n  {C.DIM}Waiting {wait}s for API rate limit...{C.RESET}", flush=True)
-                time.sleep(wait)
+        # Run all agents in parallel threads.
+        # Each agent blocks independently on its own approvals —
+        # one agent waiting for human review doesn't freeze the others.
+        print(f"  {C.DIM}Launching all agents in parallel...{C.RESET}\n")
+        keys = list(agents.keys())
+        with ThreadPoolExecutor(max_workers=len(keys)) as pool:
+            futures = {
+                pool.submit(run_agent, agents, key): key
+                for key in keys
+            }
+            for future in as_completed(futures):
+                future.result()  # propagate any unexpected errors
 
         print_summary()
         demo_kill_switch()

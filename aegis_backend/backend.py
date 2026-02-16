@@ -137,19 +137,22 @@ class SDKUpdateStatusRequest(BaseModel):
 
 @app.get("/stats", response_model=StatsResponse)
 def get_stats():
-    """Dashboard header stats."""
+    """Dashboard header stats — scoped to the current session."""
     db = mdb.get_db()
+    sid = mdb.get_current_session_id()
+    sf = {"session_id": sid} if sid else {"session_id": None}
 
-    registered = db.agents.count_documents({})
-    active = db.agents.count_documents({"status": "ACTIVE"})
+    registered = db.agents.count_documents(sf)
+    active = db.agents.count_documents({**sf, "status": "ACTIVE"})
 
     cutoff = (datetime.utcnow() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
     blocks_24h = db.audit_log.count_documents({
+        **sf,
         "status": "BLOCKED",
         "timestamp": {"$gte": cutoff},
     })
 
-    pending = db.pending_approvals.count_documents({"status": "PENDING"})
+    pending = db.pending_approvals.count_documents({**sf, "status": "PENDING"})
 
     if blocks_24h == 0:
         risk_level = "LOW"
@@ -171,16 +174,20 @@ def get_stats():
 
 @app.get("/agents", response_model=list[AgentResponse])
 def get_agents():
-    """List all agents with calculated risk scores."""
+    """List all agents with calculated risk scores — scoped to current session."""
     db = mdb.get_db()
-    agents = db.agents.find({})
+    sid = mdb.get_current_session_id()
+    sf = {"session_id": sid} if sid else {"session_id": None}
+
+    agents = db.agents.find(sf)
 
     result = []
     for agent in agents:
         name = agent["name"]
-        total = db.audit_log.count_documents({"agent_name": name})
-        blocked = db.audit_log.count_documents({"agent_name": name, "status": "BLOCKED"})
-        allowed = db.audit_log.count_documents({"agent_name": name, "status": "ALLOWED"})
+        log_filter = {**sf, "agent_name": name}
+        total = db.audit_log.count_documents(log_filter)
+        blocked = db.audit_log.count_documents({**log_filter, "status": "BLOCKED"})
+        allowed = db.audit_log.count_documents({**log_filter, "status": "ALLOWED"})
         risk_score = round((blocked / total) * 100, 1) if total > 0 else 0.0
         agent_id = "AGT-" + hashlib.sha256(name.encode()).hexdigest()[:8]
 
@@ -202,7 +209,7 @@ def get_agents():
 
 @app.get("/agents/{name}/logs", response_model=list[LogEntry])
 def get_agent_logs(name: str):
-    """Return the last 50 audit log entries for a specific agent."""
+    """Return the last 50 audit log entries for a specific agent — current session."""
     severity_map = {
         "ALLOWED": "success",
         "BLOCKED": "failure",
@@ -214,11 +221,14 @@ def get_agent_logs(name: str):
     }
 
     db = mdb.get_db()
-    agent = db.agents.find_one({"name": name})
+    sid = mdb.get_current_session_id()
+    sf = {"session_id": sid} if sid else {"session_id": None}
+
+    agent = db.agents.find_one({"name": name, **sf})
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent '{name}' not found.")
 
-    cursor = db.audit_log.find({"agent_name": name}).sort("id", -1).limit(50)
+    cursor = db.audit_log.find({**sf, "agent_name": name}).sort("id", -1).limit(50)
 
     return [
         LogEntry(
@@ -236,7 +246,7 @@ def get_agent_logs(name: str):
 
 @app.get("/logs", response_model=list[LogEntry])
 def get_global_logs():
-    """Return the last 50 audit log entries across ALL agents."""
+    """Return the last 50 audit log entries across ALL agents — current session."""
     severity_map = {
         "ALLOWED": "success",
         "BLOCKED": "failure",
@@ -248,7 +258,10 @@ def get_global_logs():
     }
 
     db = mdb.get_db()
-    cursor = db.audit_log.find({}).sort("id", -1).limit(50)
+    sid = mdb.get_current_session_id()
+    sf = {"session_id": sid} if sid else {"session_id": None}
+
+    cursor = db.audit_log.find(sf).sort("id", -1).limit(50)
 
     return [
         LogEntry(
@@ -269,6 +282,15 @@ def toggle_agent(name: str, body: ToggleRequest):
     """Toggle an agent between ACTIVE and PAUSED (kill switch)."""
     if body.status not in ("ACTIVE", "PAUSED"):
         raise HTTPException(status_code=400, detail="Status must be ACTIVE or PAUSED")
+
+    # Verify agent belongs to current session
+    sid = mdb.get_current_session_id()
+    if sid:
+        db = mdb.get_db()
+        agent = db.agents.find_one({"name": name, "session_id": sid})
+        if not agent:
+            raise HTTPException(status_code=404, detail=f"Agent '{name}' not found in current session.")
+
     mdb.update_status(name, body.status)
     return {"status": "updated", "new_status": body.status}
 
@@ -409,6 +431,13 @@ def sdk_get_all_policies(agent_name: str):
     """Get all policy rules for an agent."""
     policies = mdb.get_all_policies(agent_name)
     return {"policies": policies}
+
+
+@app.get("/sdk/find-approval/{agent_name}/{action}")
+def sdk_find_approval(agent_name: str, action: str):
+    """Find the most recent approval for agent+action in current session."""
+    doc = mdb.find_approval(agent_name, action)
+    return {"approval": doc}
 
 
 @app.get("/sdk/pending-approvals")

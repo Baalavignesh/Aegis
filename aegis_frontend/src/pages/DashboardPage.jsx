@@ -84,7 +84,12 @@ export default function DashboardPage() {
           </div>
           <div className="rounded-lg border border-divider bg-surface overflow-hidden divide-y divide-divider">
             {agents.map((agent) => {
-              const isPaused = agent.status === 'PAUSED';
+              const dotColor = {
+                REGISTERED: 'bg-ink-faint',
+                ACTIVE:     'bg-positive',
+                COMPLETED:  'bg-accent',
+                PAUSED:     'bg-negative',
+              }[agent.status] || 'bg-ink-faint';
               return (
                 <Link
                   key={agent.name}
@@ -94,9 +99,7 @@ export default function DashboardPage() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-ink truncate">{agent.name}</span>
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${
-                        isPaused ? 'bg-negative' : 'bg-positive'
-                      }`} />
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
                     </div>
                     <p className="text-xs text-ink-faint mt-0.5">{agent.owner}</p>
                   </div>

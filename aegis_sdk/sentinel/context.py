@@ -10,13 +10,14 @@ Two ways to set context:
 
 import contextvars
 from contextlib import contextmanager
+from typing import Optional
 
-_current_agent: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+_current_agent: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "sentinel_current_agent", default=None
 )
 
 
-def get_current_agent() -> str | None:
+def get_current_agent() -> Optional[str]:
     """Return the agent name from the current context, or None."""
     return _current_agent.get()
 

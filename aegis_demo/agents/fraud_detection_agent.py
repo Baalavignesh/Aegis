@@ -8,36 +8,40 @@ import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 
-from ..core import AegisAgent, ALL_TOOLS
+from sentinel import agent
+
+from ..core import ALL_TOOLS, print_agent_banner, log_thought
 
 # ── Policy: broader whitelist for fraud investigation ────────────────────
 # access_ssn is ALLOWED here — contrast with Customer Support where it hits REVIEW.
-DECORATOR = {
-    "allowed_actions": [
+AGENT_NAME = "Fraud Detection"
+AGENT_ROLE = "Fraud analysis and identity verification"
+
+@agent(
+    AGENT_NAME,
+    owner=AGENT_ROLE,
+    allows=[
         "scan_transactions", "flag_account", "verify_identity",
         "access_ssn", "check_credit_score", "lookup_balance",
         "get_transaction_history",
     ],
-    "blocked_actions": ["delete_records", "connect_external"],
-    "blocked_data": [],
-    "blocked_servers": [],
-}
+    blocks=["delete_records", "connect_external"],
+)
+class FraudDetectionAgent:
+    """The Fraud Detection agent — policy-decorated class."""
+    pass
 
 
 def run():
-    agent = AegisAgent(
-        name="Fraud Detection",
-        role="Fraud analysis and identity verification",
-        decorator=DECORATOR,
-    )
+    digital_id = print_agent_banner(AGENT_NAME, AGENT_ROLE)
 
-    monitored_tools = agent.wrap_langchain_tools(ALL_TOOLS)
+    tools = FraudDetectionAgent.wrap_tools(ALL_TOOLS)
 
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
     llm = ChatGoogleGenerativeAI(model=model)
-    agent_executor = create_react_agent(llm, monitored_tools)
+    agent_executor = create_react_agent(llm, tools)
 
-    agent.log_thought("Starting fraud scan on recent transactions")
+    log_thought("Starting fraud scan on recent transactions")
 
     prompt = (
         "You are a fraud detection agent at a bank. "
@@ -49,6 +53,6 @@ def run():
     )
 
     result = agent_executor.invoke({"messages": [("user", prompt)]})
+
     final = result["messages"][-1].content
-    agent.log_thought(f"Fraud scan complete. Summary: {final[:100]}...")
-    return agent
+    log_thought(f"Fraud scan complete. Summary: {final[:100]}...")

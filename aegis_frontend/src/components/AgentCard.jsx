@@ -2,10 +2,16 @@ import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Shield } from 'lucide-react';
 
+const STATUS_DISPLAY = {
+  REGISTERED: { color: 'bg-ink-faint', label: 'Registered' },
+  ACTIVE:     { color: 'bg-positive',  label: 'Active' },
+  COMPLETED:  { color: 'bg-accent',    label: 'Completed' },
+  PAUSED:     { color: 'bg-negative',  label: 'Paused' },
+};
+
 export default function AgentCard({ agent }) {
-  const isPaused = agent.status === 'PAUSED';
-  const statusColor = isPaused ? 'bg-negative' : 'bg-positive';
-  const statusLabel = isPaused ? 'Paused' : 'Active';
+  const { color: statusColor, label: statusLabel } =
+    STATUS_DISPLAY[agent.status] || STATUS_DISPLAY.REGISTERED;
   const riskBarColor =
     agent.risk_score > 50 ? 'bg-negative' : agent.risk_score > 20 ? 'bg-caution' : 'bg-accent';
 

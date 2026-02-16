@@ -8,36 +8,37 @@ import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 
-from ..core import AegisAgent, ALL_TOOLS
+from sentinel import agent
+
+from ..core import ALL_TOOLS, print_agent_banner, log_thought
 
 # ── Policy: narrow whitelist for loan processing ─────────────────────────
 # The LLM will try access_ssn, access_credit_card etc. to be "thorough".
 # Those aren't in allowed → REVIEW. delete_records/connect_external → hard BLOCK.
-DECORATOR = {
-    "allowed_actions": [
-        "check_credit_score", "process_application", "send_notification",
-        "verify_identity",
-    ],
-    "blocked_actions": ["delete_records", "connect_external"],
-    "blocked_data": [],
-    "blocked_servers": [],
-}
+AGENT_NAME = "Loan Processor"
+AGENT_ROLE = "Loan application processing"
+
+@agent(
+    AGENT_NAME,
+    owner=AGENT_ROLE,
+    allows=["check_credit_score", "process_application", "send_notification", "verify_identity"],
+    blocks=["delete_records", "connect_external"],
+)
+class LoanProcessorAgent:
+    """The Loan Processor agent — policy-decorated class."""
+    pass
 
 
 def run():
-    agent = AegisAgent(
-        name="Loan Processor",
-        role="Loan application processing",
-        decorator=DECORATOR,
-    )
+    digital_id = print_agent_banner(AGENT_NAME, AGENT_ROLE)
 
-    monitored_tools = agent.wrap_langchain_tools(ALL_TOOLS)
+    tools = LoanProcessorAgent.wrap_tools(ALL_TOOLS)
 
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
     llm = ChatGoogleGenerativeAI(model=model)
-    agent_executor = create_react_agent(llm, monitored_tools)
+    agent_executor = create_react_agent(llm, tools)
 
-    agent.log_thought("Processing loan application for customer #7")
+    log_thought("Processing loan application for customer #7")
 
     prompt = (
         "You are a loan processing agent. Process a loan application for customer 7 (amount: $25,000). "
@@ -54,6 +55,6 @@ def run():
     )
 
     result = agent_executor.invoke({"messages": [("user", prompt)]})
+
     final = result["messages"][-1].content
-    agent.log_thought(f"Loan processing complete. Summary: {final[:100]}...")
-    return agent
+    log_thought(f"Loan processing complete. Summary: {final[:100]}...")

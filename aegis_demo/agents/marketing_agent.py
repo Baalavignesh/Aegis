@@ -8,34 +8,38 @@ import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 
-from ..core import AegisAgent, ALL_TOOLS
+from sentinel import agent
+
+from ..core import ALL_TOOLS, print_agent_banner, log_thought
 
 # ── Policy: minimal whitelist for marketing ──────────────────────────────
 # export_customer_list is NOT in allowed or blocked → REVIEW (HITL demo).
 # access_ssn, access_phone etc. are also NOT in allowed → REVIEW.
 # delete_records / connect_external → hard BLOCK.
-DECORATOR = {
-    "allowed_actions": ["get_customer_preferences", "send_promo_email", "generate_report"],
-    "blocked_actions": ["delete_records", "connect_external"],
-    "blocked_data": [],
-    "blocked_servers": [],
-}
+AGENT_NAME = "Marketing Outreach"
+AGENT_ROLE = "Customer marketing and campaigns"
+
+@agent(
+    AGENT_NAME,
+    owner=AGENT_ROLE,
+    allows=["get_customer_preferences", "send_promo_email", "generate_report"],
+    blocks=["delete_records", "connect_external"],
+)
+class MarketingOutreachAgent:
+    """The Marketing Outreach agent — policy-decorated class."""
+    pass
 
 
 def run():
-    agent = AegisAgent(
-        name="Marketing Outreach",
-        role="Customer marketing and campaigns",
-        decorator=DECORATOR,
-    )
+    digital_id = print_agent_banner(AGENT_NAME, AGENT_ROLE)
 
-    monitored_tools = agent.wrap_langchain_tools(ALL_TOOLS)
+    tools = MarketingOutreachAgent.wrap_tools(ALL_TOOLS)
 
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
     llm = ChatGoogleGenerativeAI(model=model)
-    agent_executor = create_react_agent(llm, monitored_tools)
+    agent_executor = create_react_agent(llm, tools)
 
-    agent.log_thought("Starting marketing campaign: Spring Savings Promo")
+    log_thought("Starting marketing campaign: Spring Savings Promo")
 
     prompt = (
         "You are a marketing agent. Execute these tool calls in order. "
@@ -53,6 +57,6 @@ def run():
     )
 
     result = agent_executor.invoke({"messages": [("user", prompt)]})
+
     final = result["messages"][-1].content
-    agent.log_thought(f"Campaign complete. Summary: {final[:100]}...")
-    return agent
+    log_thought(f"Campaign complete. Summary: {final[:100]}...")
